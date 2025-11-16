@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package education;
+
+
+message Event {
+  string type = 1;         // message, user_online, user_offline, system_notice, group_message
+  string msg_type = 2;     // red_packet, voice, video, file, emoji, text
+  int64 from_user = 3;
+  int64 to_user = 4;
+  int64 group_id = 5;
+  string content = 6;
+  string media_url = 7;
+  bytes extra = 8;         // 扩展信息(红包金额、通话ID、扩展 JSON 等)
+  int64 timestamp = 9;
+  string node_id = 10;     // 来源节点 ID
+}
