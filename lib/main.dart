@@ -1,74 +1,58 @@
-import 'package:education/config/app_config.dart';
-import 'package:education/core/cache/user_cache.dart';
-import 'package:education/core/global.dart';
-import 'package:education/core/websocket/ws_event.dart';
-import 'package:education/core/websocket/ws_service.dart';
-import 'package:education/core/websocket/ws_message.dart';
-import 'package:fixnum/src/int64.dart';
 import 'package:flutter/material.dart';
-import 'config/proto_registry.dart';
-import './pb/protos/chat.pb.dart';
+import 'package:flutter/services.dart';
+import 'navigation/main_tab_scaffold.dart'; // 引入导航页
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // ✅ 必须先调用
-
-  initProtoRegistry();   // 注册所有 ProtoBuf 消息
-
-  runApp(const MyApp());
-
-  await UserCache.saveToken('ddddddddddd');
-  await UserCache.saveUserId(1);
-
-  
+void main() {
+  runApp(const DeBoxApp());
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  @override
-  void initState() {
-    super.initState();
-
-    // 启动 WebSocket
-    ws.connect();
-
-    // 注册事件
-    eventBus.on(WSEventType.chat, (msg) {
-      if (msg is Event) {
-        print("收到聊天: ${msg.content}");
-      }
-    });
-
-    eventBus.on(WSEventType.ping, (msg) {
-      print("收到心跳");
-    });
-  }
+class DeBoxApp extends StatelessWidget {
+  const DeBoxApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: Text("WebSocket 测试")),
-        body: Center(
-          child: ElevatedButton(
-            onPressed: () {
-              final protoEvent = Event()
-                ..type = 'chat'
-                ..msgType = 'text'
-                ..content = 'Hello'
-                ..fromUser = Int64(12);
+    // 浅色模式状态栏设置
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ));
 
-              ws.send(protoEvent); // 直接发 Event（记得你的 ws.send 支持判断是 ProtoBuf）
-            },
-            child: Text('发送 ProtoBuf 消息'),
+    return MaterialApp(
+      title: 'DeBox Clone',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
+        primaryColor: const Color(0xFF00D29D), // DeBox 标志性绿色
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        
+        // AppBar 全局样式
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
           ),
+          iconTheme: IconThemeData(color: Colors.black),
         ),
+        
+        // 底部导航栏全局样式
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: Colors.white,
+          selectedItemColor: Color(0xFF00D29D),
+          unselectedItemColor: Color(0xFF999999),
+          type: BottomNavigationBarType.fixed,
+          selectedLabelStyle: TextStyle(fontSize: 0), 
+          unselectedLabelStyle: TextStyle(fontSize: 0),
+          elevation: 10,
+        ),
+        useMaterial3: true,
       ),
+      home: const MainTabScaffold(),
     );
   }
 }
