@@ -6,13 +6,16 @@ class ContactsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('朋友 (1)'),
-      ),
+      appBar: AppBar(title: const Text('朋友 (1)')),
       body: Column(
         children: [
           Container(
-            margin: const EdgeInsets.all(16),
+            margin: const EdgeInsets.only(
+              top: 2,
+              left: 16,
+              right: 16,
+              bottom: 16,
+            ),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: const Color(0xFFF5F5F5),
@@ -27,15 +30,22 @@ class ContactsPage extends StatelessWidget {
             ),
           ),
           _buildMenuItem(Icons.person_add_alt_1, '新增关注', Colors.orange),
-          _buildMenuItem(Icons.person_outline, '关注 (9)', const Color(0xFF00D29D)),
-          
+          _buildMenuItem(
+            Icons.person_outline,
+            '关注 (9)',
+            const Color(0xFF00D29D),
+          ),
+
           Container(
             width: double.infinity,
             color: const Color(0xFFF9F9F9),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: const Text('#', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            child: const Text(
+              '#',
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
           ),
-          
+
           ListTile(
             leading: Container(
               width: 40,
@@ -45,8 +55,14 @@ class ContactsPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            title: const Text('04704323', style: TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: const Text('0xee...323', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            title: const Text(
+              '04704323',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: const Text(
+              '0xee...323',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ),
         ],
       ),
@@ -54,18 +70,40 @@ class ContactsPage extends StatelessWidget {
   }
 
   Widget _buildMenuItem(IconData icon, String title, Color color) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
+  return Column( // Use Column to stack ListTile and the separator line
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: Colors.white, size: 22),
         ),
-        child: Icon(icon, color: Colors.white, size: 20),
+        // Remove the Column and the line from the title widget
+        title: Text(title), 
+        // Remove the SizedBox that was acting as the trailing widget
+        trailing: null, 
+        dense: true,
+        visualDensity: const VisualDensity(vertical: 0),
       ),
-      title: Text(title),
-      trailing: const SizedBox(width: 16),
-      dense: true,
-    );
-  }
+      // Separator line placed outside the ListTile
+      Padding(
+        // Set the padding on the left to align with the text, 
+        // and remove padding on the right to reach the edge.
+        padding: const EdgeInsets.only(left: 72, right: 20), 
+        child: Container(
+          width: double.infinity,
+          height: 1,
+          color: Colors.grey[200],
+        ),
+      ),
+    ],
+  );
+}
+
+
 }

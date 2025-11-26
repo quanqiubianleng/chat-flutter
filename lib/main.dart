@@ -1,9 +1,16 @@
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'core/cache/user_cache.dart';
 import 'navigation/main_tab_scaffold.dart'; // 引入导航页
+import 'services/api_service.dart';
+import 'services/user_service.dart';
 
 void main() {
   runApp(const DeBoxApp());
+  httpsf();
 }
 
 class DeBoxApp extends StatelessWidget {
@@ -54,5 +61,35 @@ class DeBoxApp extends StatelessWidget {
       ),
       home: const MainTabScaffold(),
     );
+  }
+}
+
+
+void httpsf() async {
+  // 初始化 ApiClient，传入 baseUrl（可以为空或者接口前缀）
+  final api = UserApi();
+
+  try {
+    // POST 请求示例
+    final postResponse = await api.importWallet({
+      "did_id": "21342",
+      "password": "dfsgfsd",
+      "mnemonic": "waste source draw buddy kitchen super stage trumpet three tongue assume ring",
+      "deviceNo": "gfdgfdhgfdh",
+    });
+
+    print("POST Response: ${postResponse}");
+    await UserCache.saveToken(postResponse['token']);
+    print(jsonEncode(postResponse));
+
+    // GET 请求示例
+    final getResponse = await api.getUserInfo();
+
+    print("GET Response: ${getResponse}");
+  } on DioError catch (e) {
+    print("请求出错: ${e.error}");
+    if (e.response != null) {
+      print("响应数据: ${e.response?.data}");
+    }
   }
 }

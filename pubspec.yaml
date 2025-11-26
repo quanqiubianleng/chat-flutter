@@ -38,6 +38,9 @@ dependencies:
   fixnum: ^1.0.0
   web_socket_channel: ^2.3.0
   shared_preferences: ^2.5.3
+  dio: ^5.9.0
+  cryptography: ^2.9.0
+  fluttertoast: ^9.0.0
 
 
 dev_dependencies:

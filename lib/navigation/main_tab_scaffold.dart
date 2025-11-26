@@ -18,8 +18,8 @@ class _MainTabScaffoldState extends State<MainTabScaffold> {
   // 页面列表
   final List<Widget> _pages = [
     const ChatPage(),
-    const MarketFeedPage(),
     const ContactsPage(),
+    const MarketFeedPage(),
     const ProfilePage(),
   ];
 
