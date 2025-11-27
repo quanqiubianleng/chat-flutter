@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../widgets/follower/OfficialRewardCard.dart';
+import '../../widgets/follower/CommunityPostCard.dart';
+import '../../widgets/follower/DeBoxFloatingMenu.dart';
 
 class MarketFeedPage extends StatelessWidget {
   const MarketFeedPage({super.key});
@@ -10,37 +13,76 @@ class MarketFeedPage extends StatelessWidget {
       initialIndex: 0,
       child: Scaffold(
         appBar: AppBar(
-          title: const TabBar(
-            isScrollable: true,
-            labelColor: Colors.black,
-            labelStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            unselectedLabelColor: Colors.grey,
-            unselectedLabelStyle: TextStyle(fontSize: 16),
-            indicatorColor: Color(0xFF00D29D),
-            indicatorSize: TabBarIndicatorSize.label,
-            indicatorWeight: 3,
-            dividerColor: Colors.transparent,
-            tabs: [
-              Tab(text: '关注'),
-              Tab(text: '行情'),
-              Tab(text: '活动'),
+          automaticallyImplyLeading: false, // 不要默认 back 按钮空间
+          titleSpacing: 0, // 让内容完全贴左边
+          title: Row(
+            children: [
+              Expanded(
+                child: TabBar(
+                  isScrollable: true,
+                  labelColor: Colors.black,
+                  labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  unselectedLabelColor: Colors.grey,
+                  unselectedLabelStyle: TextStyle(fontSize: 14),
+                  indicatorColor: Color(0xFF00D29D),
+                  indicatorSize: TabBarIndicatorSize.label,
+                  indicatorWeight: 2,
+                  dividerColor: Colors.transparent,
+                  tabs: [
+                    Tab(text: '关注'),
+                    Tab(text: '行情'),
+                    Tab(text: '活动'),
+                  ],
+                ),
+              ),
+
+              IconButton(
+                icon: const Icon(Icons.notifications_none),
+                onPressed: () {},
+              ),
+              const SizedBox(width: 8),
             ],
           ),
-          actions: [
-            IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
-            const SizedBox(width: 8),
-          ],
         ),
         body: const TabBarView(
-          children: [
-            FollowTab(),
-            MarketTab(),
-            ActivityTab(),
-          ],
+          children: [FollowTab(), MarketTab(), ActivityTab()],
         ),
+        // 右下角绿色 + 按钮（和截图一模一样）
+        floatingActionButton: const DeBoxFloatingMenu(),
       ),
     );
   }
+}
+
+Widget _buildMessageWithAvatar({
+  required Widget child,   // 就是 OfficialRewardCard 或 CommunityPostCard 的内容部分
+}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start, // 顶部对齐
+      children: [
+        // 左侧：头像 + 时间
+        Column(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: const BoxDecoration(
+                color: Colors.green,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 24),
+            ),
+          ],
+        ),
+        const SizedBox(width: 12),
+
+        // 右侧：原组件内容（去掉自己的时间和标题，专心展示卡片）
+        Expanded(child: child),
+      ],
+    ),
+  );
 }
 
 // --- 下面是三个子Tab的代码，也可以继续拆分为单独文件 ---
@@ -51,42 +93,57 @@ class FollowTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
       children: [
-        _buildFollowCard('3天前', '抽奖 100vBOX', '2025-11-17 22:34:25'),
-        _buildFollowCard('4天前', '抽奖 🎟️ 1U', '2025-11-17 01:22:34'),
-      ],
-    );
-  }
-
-  Widget _buildFollowCard(String timeAgo, String title, String date) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(timeAgo, style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 8),
-          Card(
-            elevation: 0,
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              side: BorderSide(color: Colors.grey[200]!),
-              borderRadius: BorderRadius.circular(12)
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  Text(date, style: const TextStyle(color: Colors.grey)),
-                ],
+        // 官方红包（带头像）
+        _buildMessageWithAvatar(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              OfficialRewardCard( 
+                timeAgo: "4天前", // ← 我们新建一个「纯内容版」
+                amount: "1USDT",
+                timestamp: "2025-11-27 00:41:42",
+                url: "https://m.debox.pro/reward/detail?id=...",
               ),
-            ),
-          )
-        ],
-      ),
+            ],
+          ),
+        ),
+
+        // 社区用户消息
+        _buildMessageWithAvatar(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CommunityPostCard( 
+                username: "(CBD) 链上数据 | 全面启航",
+                timeAgo: "4天前",
+                content:
+                    "CBD 链上数据 | DeBox 生态重磅新品\nDeFi+社交挖矿+DAO三角驱动\n\n11亿总量永不增发\n10% 节点、10% 空投、50% 挖矿、5% 保...",
+                imageUrl:
+                    "https://tc.newscdn.cn/tcfile/image/202411/27/cbd_debox_post_screenshot.jpg",
+                likeCount: 112,
+                commentCount: 3,
+                link: "https://idap.cbd.ink/#/?login?...",
+              ),
+            ],
+          ),
+        ),
+
+        // 再来一条官方红包
+        _buildMessageWithAvatar(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              OfficialRewardCard( 
+                timeAgo: "4天前", // ← 我们新建一个「纯内容版」
+                amount: "1USDT",
+                timestamp: "2025-11-27 00:41:42",
+                url: "https://m.debox.pro/reward/detail?id=...",
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

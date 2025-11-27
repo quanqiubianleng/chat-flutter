@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'core/cache/user_cache.dart';
 import 'navigation/main_tab_scaffold.dart'; // 引入导航页
@@ -9,6 +10,16 @@ import 'services/api_service.dart';
 import 'services/user_service.dart';
 
 void main() {
+  // 关键：这一行要最先执行！
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 彻底关闭所有调试视觉提示（红字、黄黑条、彩虹边框全都没了）
+  debugPaintSizeEnabled = false;           // 关闭 overflow 红字
+  debugRepaintRainbowEnabled = false;      // 关闭彩虹重绘边框
+  debugPaintBaselinesEnabled = false;      // 关闭文本基线
+  debugPaintLayerBordersEnabled = false;   // 关闭层边界
+  //debugPaintPointersEnabled = false;       // 关闭点击指针
+
   runApp(const DeBoxApp());
   httpsf();
 }
