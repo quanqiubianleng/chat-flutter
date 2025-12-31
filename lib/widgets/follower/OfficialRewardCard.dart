@@ -35,7 +35,7 @@ class OfficialRewardCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "DeBox 官方 Support | 讨论总群",
+                "BBT 官方 Support | 讨论总群",
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
               Text(
@@ -54,7 +54,7 @@ class OfficialRewardCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               image: const DecorationImage(
                 image: NetworkImage(
-                  "https://tc.newscdn.cn/tcfile/image/202411/27/debox_official_reward_bg_2025.jpg",
+                  "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
                 ),
                 fit: BoxFit.cover,
               ),
@@ -62,7 +62,7 @@ class OfficialRewardCard extends StatelessWidget {
             child: Column(
               children: [
                 Image.network(
-                  "https://tc.newscdn.cn/tcfile/image/202411/27/debox_gift_box.png",
+                  "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
                   width: 120,
                 ),
                 const SizedBox(height: 20),

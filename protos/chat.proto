@@ -4,14 +4,40 @@ package education;
 
 
 message Event {
-  string type = 1;         // message, user_online, user_offline, system_notice, group_message
-  string msg_type = 2;     // red_packet, voice, video, file, emoji, text
-  int64 from_user = 3;
-  int64 to_user = 4;
-  int64 group_id = 5;
-  string content = 6;
-  string media_url = 7;
-  bytes extra = 8;         // 扩展信息(红包金额、通话ID、扩展 JSON 等)
-  int64 timestamp = 9;
-  string node_id = 10;     // 来源节点 ID
+  // 路由相关
+  string delivery        = 1;  // "single" | "group" | "broadcast"
+  string type            = 2;  // message, red_packet, switch_user ...
+  int64  from_user       = 3;
+  int64  to_user         = 4;  // single 时必填
+  int64  group_id        = 5;  // group 时必填
+
+  // 消息唯一标识
+  string msg_id          = 6;
+  string client_msg_id   = 7;  // 可选，客户端 UUID
+
+  // 内容
+  string media_url       = 8;
+  string content         = 9;
+  bytes  extra           = 10; // json.RawMessage → bytes
+
+  // 时间
+  int64  timestamp       = 11;
+  int64  server_ts       = 12;
+  string node_id         = 13;
+
+  // 状态回执
+  int64  seq             = 14;
+  string status          = 15;
+
+  // 扩展
+  string reply_to        = 16;
+  repeated int64 mention = 17;
+  string thread_id       = 18;
+
+  //  发送者信息 
+  string sender_nickname = 19;       // 昵称
+  string sender_avatar = 20;       // 头像
+
+  // 新增：会话ID（核心！所有消息必填）
+  string conversation_id = 30;    // <--- 强烈建议添加这个！放在靠后的位置避免影响旧字段编号
 }

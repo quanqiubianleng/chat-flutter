@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:education/config/app_config.dart';
 
 import '../core/cache/user_cache.dart';
 
@@ -11,7 +12,7 @@ class ApiClient {
   static final List<int> aesKeyBytes =
       utf8.encode("12345678901234567890123456789012"); // 32 字节
 
-  static const String baseUrl = "http://127.0.0.1:8860";
+  static const String baseUrl = AppConfig.reqUrl;
 
   ApiClient() : dio = Dio(
           BaseOptions(
@@ -19,6 +20,8 @@ class ApiClient {
             connectTimeout: const Duration(seconds: 8),
             receiveTimeout: const Duration(seconds: 10),
             headers: {'Content-Type': 'application/json'},
+            // 全局强制所有请求都用 JSON
+            contentType: "application/json",
           ),
         ) {
     dio.interceptors.add(_authInterceptor());
@@ -44,8 +47,8 @@ class ApiClient {
   InterceptorsWrapper _encryptInterceptor() {
     return InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final method = options.method.toUpperCase();
-        final shouldEncrypt = method == "POST" || method == "PUT" || method == "PATCH";
+        // final method = options.method.toUpperCase();
+        final shouldEncrypt = true;
 
         if (shouldEncrypt && options.data != null) {
           try {
@@ -168,6 +171,6 @@ class ApiClient {
   Future<Response> post(String path, {Map<String, dynamic>? data}) =>
       dio.post(path, data: data);
 
-  Future<Response> get(String path, {Map<String, dynamic>? query}) =>
-      dio.get(path, queryParameters: query);
+  Future<Response> get(String path, {Map<String, dynamic>? data}) =>
+      dio.get(path, data: data);
 }

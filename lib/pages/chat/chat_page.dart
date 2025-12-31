@@ -1,164 +1,304 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fixnum/fixnum.dart';
+import 'package:education/pages/chat/single_chat.dart'; // DeBoxChatPage 所在文件
+import 'package:education/pages/search/search_type.dart';
+import 'package:education/providers/chat_providers.dart'; // 你的 Riverpod providers 文件路径
+import 'package:education/modules/chat/models/conversation_info.dart';
 
-class ChatPage extends StatefulWidget {
-  // ← 改为 StatefulWidget
+import 'package:education/core/sqlite/database_helper.dart';
+
+import '../../providers/user_provider.dart'; // Conversation 类所在路径，根据你的项目调整
+
+class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key});
 
   @override
-  State<ChatPage> createState() => _ChatPageState();
+  ConsumerState<ChatPage> createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
-  // ← 添加 State 类
-  int _selectedIndex = 0; // ← 添加状态管理
+class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver {
+  int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    // 页面首次显示也刷一次（保险）
+    // 正确方式：延迟一帧，确保 userProvider 有值后再刷新
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final currentUid = ref.read(userProvider.select((value) => value.value));
+      if (currentUid != null) {
+        ref.refresh(conversationListProvider(currentUid));
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App 从后台切回前台，强制刷新会话列表
+      final currentUid = ref.read(userProvider.select((value) => value.value));
+      if (currentUid != null) {
+        ref.refresh(conversationListProvider(currentUid)); // 传入 userId
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[200],
-      appBar: AppBar(
-        backgroundColor: Colors.grey[200],
-        surfaceTintColor: Colors.grey[200],
-        elevation: 0,
-        toolbarHeight: 48,
-        leading: IconButton(
-          icon: const Icon(Icons.add_circle_outline, size: 24),
-          onPressed: () {},
-        ),
-        title: const Text(
-          'DeBox',
-          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 18),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search, size: 24),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline, size: 24),
-            onPressed: () {},
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 顶部筛选胶囊
-          Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              border: Border(
-                bottom: BorderSide(color: Colors.grey[100]!, width: 1.0),
+    // 安全获取当前用户ID
+    final userAsync = ref.watch(userProvider);
+
+    return userAsync.when(
+        loading: () => Scaffold(body: Center(child: CircularProgressIndicator())),
+        error: (err, stack) => Scaffold(body: Center(child: Text('用户加载失败'))),
+        data: (currentUid) {
+          if (currentUid == null) {
+            return Scaffold(
+              backgroundColor: Colors.grey[200],
+              appBar: AppBar(
+                backgroundColor: Colors.grey[200],
+                surfaceTintColor: Colors.grey[200],
+                elevation: 0,
+                toolbarHeight: 48,
+                leading: IconButton(
+                  icon: const Icon(Icons.add_circle_outline, size: 24),
+                  onPressed: () {},
+                ),
+                title: const Text(
+                  'BBT',
+                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 18),
+                ),
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.search, size: 24),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const SearchType()),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline, size: 24),
+                    onPressed: () {},
+                  ),
+                ],
               ),
-            ),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              children: [
-                _buildFilterChip(
-                  '全部 3',
-                  isActive: _selectedIndex == 0, // ← 根据状态判断是否激活
-                  onTap: () {
-                    setState(() {
-                      // ← 更新状态
-                      _selectedIndex = 0;
-                    });
-                    print('点击了全部');
+              body: Column(
+                children: [
+                  // 顶部筛选胶囊
+                  Container(
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey[100]!, width: 1.0),
+                      ),
+                    ),
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      children: [
+                        _buildFilterChip(
+                          '全部',
+                          isActive: _selectedIndex == 0,
+                          onTap: () => setState(() => _selectedIndex = 0),
+                        ),
+                        _buildFilterChip(
+                          '私信',
+                          isActive: _selectedIndex == 1,
+                          onTap: () => setState(() => _selectedIndex = 1),
+                        ),
+                        _buildFilterChip(
+                          '群组',
+                          isActive: _selectedIndex == 2,
+                          onTap: () => setState(() => _selectedIndex = 2),
+                        ),
+                        _buildFilterChip(
+                          'Club',
+                          isActive: _selectedIndex == 3,
+                          onTap: () => setState(() => _selectedIndex = 3),
+                        ),
+                        _buildFilterChip(
+                          'DAO',
+                          isActive: _selectedIndex == 4,
+                          onTap: () => setState(() => _selectedIndex = 4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Center(child: Text('未登录'))
+                ],
+              ),
+            );
+          }
+
+          final asyncConversations = ref.watch(conversationListProvider(currentUid));
+          print(currentUid);
+          print(asyncConversations);
+
+          return Scaffold(
+            backgroundColor: Colors.grey[200],
+            appBar: AppBar(
+              backgroundColor: Colors.grey[200],
+              surfaceTintColor: Colors.grey[200],
+              elevation: 0,
+              toolbarHeight: 48,
+              leading: IconButton(
+                icon: const Icon(Icons.add_circle_outline, size: 24),
+                onPressed: () {},
+              ),
+              title: const Text(
+                'BBT',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 18),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.search, size: 24),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SearchType()),
+                    );
                   },
                 ),
-                _buildFilterChip(
-                  '私信 3',
-                  isActive: _selectedIndex == 1, // ← 根据状态判断是否激活
-                  onTap: () {
-                    setState(() {
-                      // ← 更新状态
-                      _selectedIndex = 1;
-                    });
-                    print('点击了私信');
-                  },
-                ),
-                _buildFilterChip(
-                  '群组',
-                  isActive: _selectedIndex == 2, // ← 根据状态判断是否激活
-                  onTap: () {
-                    setState(() {
-                      // ← 更新状态
-                      _selectedIndex = 2;
-                    });
-                    print('点击了群组');
-                  },
-                ),
-                _buildFilterChip(
-                  'Club',
-                  isActive: _selectedIndex == 3, // ← 根据状态判断是否激活
-                  onTap: () {
-                    setState(() {
-                      // ← 更新状态
-                      _selectedIndex = 3;
-                    });
-                    print('点击了Club');
-                  },
-                ),
-                _buildFilterChip(
-                  'DAO',
-                  isActive: _selectedIndex == 4, // ← 根据状态判断是否激活
-                  onTap: () {
-                    setState(() {
-                      // ← 更新状态
-                      _selectedIndex = 4;
-                    });
-                    print('点击了DAO');
-                  },
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline, size: 24),
+                  onPressed: () {},
                 ),
               ],
             ),
-          ),
-          // 消息列表
-          Expanded(
-            child: ListView(
+            body: Column(
               children: [
-                _buildChatItem(
-                  title: '(CBD) 链盒数据 📊 全面启航...',
-                  subtitle: '[有人@我]2d8dfc10 加入了群组',
-                  time: '17:24',
-                  avatarColor: const Color(0xFF00D29D),
-                  icon: Icons.token,
-                  subtitleColor: Colors.grey,
-                  atMe: true,
-                  isMuted: true,
+                // 顶部筛选胶囊
+                Container(
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    border: Border(
+                      bottom: BorderSide(color: Colors.grey[100]!, width: 1.0),
+                    ),
+                  ),
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    children: [
+                      _buildFilterChip(
+                        '全部',
+                        isActive: _selectedIndex == 0,
+                        onTap: () => setState(() => _selectedIndex = 0),
+                      ),
+                      _buildFilterChip(
+                        '私信',
+                        isActive: _selectedIndex == 1,
+                        onTap: () => setState(() => _selectedIndex = 1),
+                      ),
+                      _buildFilterChip(
+                        '群组',
+                        isActive: _selectedIndex == 2,
+                        onTap: () => setState(() => _selectedIndex = 2),
+                      ),
+                      _buildFilterChip(
+                        'Club',
+                        isActive: _selectedIndex == 3,
+                        onTap: () => setState(() => _selectedIndex = 3),
+                      ),
+                      _buildFilterChip(
+                        'DAO',
+                        isActive: _selectedIndex == 4,
+                        onTap: () => setState(() => _selectedIndex = 4),
+                      ),
+                    ],
+                  ),
                 ),
-                _buildChatItem(
-                  title: 'DeBox Support | 新手群',
-                  subtitle: '[有人@我]宇宙联盟-勋-贵州:怎么肥事...',
-                  time: '17:21',
-                  avatarColor: const Color(0xFF00D29D),
-                  icon: Icons.support_agent,
-                  hasRedDot: true,
-                  atMe: true,
-                  subtitlePrefixColor: Colors.red,
+
+                // 动态会话列表
+                Expanded(
+                  child: asyncConversations.when(
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (err, stack) => Center(child: Text('加载失败: $err')),
+                    data: (conversations) {
+                      if (conversations.isEmpty) {
+                        return const Center(child: Text('暂无会话'));
+                      }
+
+                      // 在这里打印数据
+                      print("会话数据: ${conversations.length} 条记录");
+                      for (var conv in conversations) {
+                        print("会话: type=${conv.type}, title=${conv.title}, server_conversation_id=${conv.serverConversationId}, "
+                            "last_content=${conv.lastContent}, user_id=${conv.userId}");
+                      }
+
+                      // 根据当前筛选索引过滤（这里简单示例，实际可根据 Conversation.type 扩展）
+                      List<Conversation> filteredList = conversations;
+                      if (_selectedIndex == 1) {
+                        filteredList = conversations.where((c) => c.type == 'single').toList();
+                      } else if (_selectedIndex == 2) {
+                        filteredList = conversations.where((c) => c.type == 'group').toList();
+                      }
+                      // Club / DAO 可以后续根据实际类型扩展
+
+                      return ListView.builder(
+                        itemCount: filteredList.length,
+                        itemBuilder: (context, index) {
+                          final conv = filteredList[index];
+                          return _buildChatItem(
+                            title: conv.title ?? '未知会话',
+                            subtitle: conv.lastContent ?? '', // 建议在 Conversation 类中添加此字段
+                            time: _formatTimestamp(conv.lastTimestamp),
+                            avatarColor: const Color(0xFF00D29D),
+                            icon: conv.type == 'group' ? Icons.group : Icons.person,
+                            badgeCount: conv.unreadCount ?? 0,
+                            isMuted: conv.muted == 1,
+                            hasRedDot: (conv.unreadCount ?? 0) > 0 && conv.pinned != 1,
+                            atMe:  false, // 如果你有 @ 我的标记字段
+                            onTap: () async {
+                              // 进入聊天前重置未读数
+                              final convId = conv.serverConversationId ?? conv.serverConversationId;
+                              await ref.read(messageRepositoryProvider).resetUnreadCount(convId);
+
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DeBoxChatPage(
+                                    chatId: convId,
+                                    chatName: conv.title ?? '',
+                                    toUser: Int64(0),
+                                    isGroup: conv.type == 'group',
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
-                _buildChatItem(
-                  title: 'BlockBeats',
-                  subtitle: '「比特币 11月跌破 8万美元」概率升至 55%',
-                  time: '17:20',
-                  avatarColor: Colors.blueAccent,
-                  icon: Icons.flash_on,
-                  badgeCount: 15,
-                ),
-                // ... 其他列表项保持不变
               ],
             ),
-          ),
-        ],
-      ),
+          );
+        }
     );
+
+
+
   }
 
   Widget _buildFilterChip(
-    String label, {
-    bool isActive = false,
-    VoidCallback? onTap,
-  }) {
+      String label, {
+        required bool isActive,
+        required VoidCallback onTap,
+      }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -181,7 +321,6 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  // _buildChatItem 方法保持不变
   Widget _buildChatItem({
     required String title,
     required String subtitle,
@@ -195,9 +334,10 @@ class _ChatPageState extends State<ChatPage> {
     bool atMe = false,
     Color? subtitlePrefixColor,
     Color? subtitleColor,
+    required VoidCallback onTap,
   }) {
     return InkWell(
-      onTap: () {},
+      onTap: onTap,
       child: Container(
         color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -213,15 +353,15 @@ class _ChatPageState extends State<ChatPage> {
                     color: avatarColor ?? Colors.grey[300],
                     borderRadius: BorderRadius.circular(12),
                     image: imageUrl != null
-                        ? DecorationImage(image: NetworkImage(imageUrl))
+                        ? DecorationImage(image: NetworkImage(imageUrl), fit: BoxFit.cover)
                         : null,
                   ),
                   child: imageUrl == null
                       ? Icon(
-                          icon ?? Icons.person,
-                          color: Colors.white,
-                          size: 28,
-                        )
+                    icon ?? Icons.person,
+                    color: Colors.white,
+                    size: 28,
+                  )
                       : null,
                 ),
                 if (hasRedDot)
@@ -270,14 +410,16 @@ class _ChatPageState extends State<ChatPage> {
                     padding: const EdgeInsets.only(bottom: 10),
                     decoration: BoxDecoration(
                       border: Border(
-                        bottom: BorderSide(
-                          color: Colors.grey[100]!,
-                          width: 1.0,
-                        ),
+                        bottom: BorderSide(color: Colors.grey[100]!, width: 1.0),
                       ),
                     ),
                     child: Row(
                       children: [
+                        if (atMe)
+                          Text(
+                            '[有人@我] ',
+                            style: TextStyle(color: Colors.red, fontSize: 13),
+                          ),
                         Expanded(
                           child: Text(
                             subtitle,
@@ -292,16 +434,13 @@ class _ChatPageState extends State<ChatPage> {
                         if (badgeCount > 0)
                           Container(
                             margin: const EdgeInsets.only(left: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: const Color(0xFFFF4D4F),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              '$badgeCount',
+                              badgeCount > 99 ? '99+' : '$badgeCount',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
@@ -319,5 +458,23 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+  }
+
+  String _formatTimestamp(int? timestampSeconds) {
+    if (timestampSeconds == null || timestampSeconds == 0) return '';
+    final int timestampMs = timestampSeconds * 1000;
+    final date = DateTime.fromMillisecondsSinceEpoch(timestampMs);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (date.isAfter(today)) {
+      return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } else if (date.isAfter(today.subtract(const Duration(days: 1)))) {
+      return '昨天';
+    } else if (date.year == now.year) {
+      return '${date.month}/${date.day}';
+    } else {
+      return '${date.year}/${date.month}/${date.day}';
+    }
   }
 }

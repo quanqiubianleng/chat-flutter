@@ -63,7 +63,11 @@ class CommunityPostCard extends StatelessWidget {
             const SizedBox(height: 10),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(imageUrl!, fit: BoxFit.cover),
+              child: Image.network(
+                imageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60),
+              ),
             ),
           ],
 

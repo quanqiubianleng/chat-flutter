@@ -1,21 +1,11 @@
-import 'dart:convert';
-import 'package:protobuf/protobuf.dart';
-import '../../pb/protos/chat.pb.dart';
+// lib/core/websocket/ws_message.dart
+// 该文件在新协议下已不再需要（全部直接使用 chat.pb.dart 中的 Event）
+// 保留仅为兼容旧代码，可直接删除
 
-/// WebSocket 消息基类
+import 'package:education/pb/protos/chat.pb.dart';
+
+/// 旧的抽象消息类，已废弃
+@Deprecated("直接使用 chat.pb.dart 中的 Event")
 abstract class WSMessage {
-  Map<String, dynamic> toJson() => {};
   List<int> toProtoBuf() => [];
 }
-
-
-/// ProtoBuf 消息示例
-class WSProtoMessage<T extends GeneratedMessage> extends WSMessage {
-  final T message;
-
-  WSProtoMessage(this.message);
-
-  @override
-  List<int> toProtoBuf() => message.writeToBuffer();
-}
-
