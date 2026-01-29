@@ -3,16 +3,25 @@ import 'dart:io';
 import 'package:education/widgets/chat/simple_media_panel.dart';
 import 'package:flutter/material.dart';
 import '../../core/utils/chat_media_uploader.dart';
+import '../../core/utils/get_string_uuid.dart';
+import '../../core/utils/timer.dart';
+import '../../core/websocket/ws_event.dart';
 import '../../core/websocket/ws_extra.dart';
+import '../../pages/chat/red_packet.dart';
+import '../../pages/chat/transfer.dart';
 import './emoji_picker_widget.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 
 class ChatInputBar extends StatefulWidget {
+  final bool isGroup;
+  final int toUserId; /// 单聊：用户id  群聊：群id
   final Function(String message, String type, String mediaUrl, {Map<String, dynamic>? extra}) onSendMessage;
 
   const ChatInputBar({
     Key? key,
+    required this.isGroup,
+    required this.toUserId,
     required this.onSendMessage,
   }) : super(key: key);
 
@@ -103,19 +112,19 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
     switch (type) {
       case 'images':
-        messageType = 'image';
+        messageType = WSEventType.image;
         prefix = '[图片]';
         break;
       case 'videos':
-        messageType = 'video';
+        messageType = WSEventType.video;
         prefix = '[视频]';
         break;
       case 'voices':
-        messageType = 'voice';
+        messageType = WSEventType.voice;
         prefix = '[语音]';
         break;
       default:
-        messageType = 'file';
+        messageType = WSEventType.file;
         prefix = '[文件]';
     }
 
@@ -410,7 +419,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                       controller: _controller,
                       focusNode: _focusNode,
                       minLines: 1,
-                      maxLines: 4,
+                      maxLines: 2,
                       textInputAction: TextInputAction.newline,
                       decoration: InputDecoration(
                         hintText: "说点什么...",
@@ -421,9 +430,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide.none,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                       ),
-                      style: const TextStyle(fontSize: 16),
+                      style: const TextStyle(fontSize: 14),
                       onChanged: (_) => setState(() {}), // 实时更新发送按钮状态
                     ),
                   ),
@@ -441,7 +450,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
                 // 更多（媒体面板）
                 IconButton(
-                  icon: const Icon(Icons.add_circle_outline, size: 28, color: Colors.grey),
+                  icon: Icon(Icons.add_circle_outline, size: 28, color: Colors.grey[700]),
                   onPressed: _toggleMediaPanel,
                 ),
 
@@ -539,6 +548,53 @@ class _ChatInputBarState extends State<ChatInputBar> {
             onRedPacket: () {
               print("点击红包");
               // TODO: 打开红包界面
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RedPacketPage(
+                    toUserId: widget.toUserId,
+                    onGenerateRedPacket: (int count, int amount, String wish) {
+                      // 这里接收到用户输入的数量和祝福语
+                      print('用户要发 $count 个红包, 总额度：$amount，祝福语: $wish');
+                      final redPacketExtra = RedPacketExtra(
+                        redPacketId: generateRedPacketId(),
+                        amount: amount,
+                        count: count,
+                        wish: wish,
+                        rpType: 'lucky',
+                        status: 0,
+                        expiredAt: TimeUtils.currentTimestamp + 3600*24,
+                      ).toJson();
+                      widget.onSendMessage('[红包]', WSEventType.redPacket, "", extra: redPacketExtra,);
+                    },
+                  ),
+                ),
+              );
+            },
+            onTransfer: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => TransferPage(
+                    toUserNickname: "dddd",
+                    toUserAddress: "fds",
+                    toUserId: widget.toUserId,
+                    avatarUrl: "",
+                    onGenerateTransfer: (int amount, String remark, String icon){
+                      print('用户要转账额度：$amount，祝福语: $remark');
+                      final transferExtra = TransferExtra(
+                        transferId: generateTransferId(),
+                        amount: amount,
+                        remark: remark,
+                        status: 0,
+                        icon: icon,
+                        expiredAt: TimeUtils.currentTimestamp + 3600*24,
+                      ).toJson();
+                      widget.onSendMessage('[转账]', WSEventType.transfer, "", extra: transferExtra,);
+                    }
+                  ),
+                ),
+              );
             },
           ),
       ],

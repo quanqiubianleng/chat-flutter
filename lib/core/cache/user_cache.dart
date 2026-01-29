@@ -5,6 +5,8 @@ class UserCache {
   static const _userIdKey = 'user_id';
   static const _deviceNoKey = 'device_no';
   static const _didIdKey = 'did_id';
+  static const _avatarKey = 'avatar';
+  static const _nicknameKey = 'nickname';
 
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -14,6 +16,26 @@ class UserCache {
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
+  }
+
+  static Future<void> saveNickname(String nickname) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_nicknameKey, nickname);
+  }
+
+  static Future<String?> getNickname() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_nicknameKey);
+  }
+
+  static Future<void> saveAvatar(String avatar) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_avatarKey, avatar);
+  }
+
+  static Future<String?> getAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_avatarKey);
   }
 
   static Future<void> saveUserId(int userId) async {

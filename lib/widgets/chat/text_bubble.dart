@@ -32,7 +32,7 @@ class TextBubble extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isMe ? const Color(0xFF2483FF) : const Color(0xFF1E252F),
+                color: const Color(0xFF2483FF),
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),

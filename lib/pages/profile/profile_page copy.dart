@@ -16,7 +16,7 @@ class _ProfilePageState extends State<ProfilePage> {
   User currentUser = User(
     username: "加载中...",
     walletAddress: "加载中...",
-    avatarUrl: "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
+    avatarUrl: "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
     level: "Lv.122",
     userId: 0,
     did: "",
@@ -62,7 +62,7 @@ class _ProfilePageState extends State<ProfilePage> {
         {
           "username": "备用账号",
           "wallet_address": "0x80875f3d8e6b2f481fD9",
-          "avatar_url": "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
+          "avatar_url": "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
           "hasNotification": true,
         },
         {

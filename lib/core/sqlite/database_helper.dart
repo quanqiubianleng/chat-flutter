@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:education/core/sqlite/user_table.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:education/pb/protos/chat.pb.dart' as pb;
-import 'follower_table.dart'; // 导入 follower 表创建函数
+import 'follower_table.dart';
+import 'group_mute_table.dart'; // 导入 follower 表创建函数
 
 // ==================== Event 扩展：保持不变，很好 ====================
 extension EventSqlite on pb.Event {
@@ -272,6 +274,10 @@ class DatabaseHelper {
 
     // 创建 follower 表
     await createFollowerTable(db);
+    // 创建user表
+    await createUserTable(db);
+    // 创建群组禁言表
+    await createGroupMuteTables(db);
   }
 
   // 数据表升级

@@ -10,17 +10,22 @@ Future<bool> isAndroidEmulator() async {
 }
 
 Future<String> getWsUrl() async {
-  if (Platform.isAndroid && await isAndroidEmulator()) {
+  /*if (Platform.isAndroid && await isAndroidEmulator()) {
     return 'ws://10.0.2.2:8899/ws';
-  }
-
-  return 'ws://192.168.1.103:8899/ws';
+  }*/
+  // 本地
+   return 'ws://192.168.1.103:8899/ws';
+  // 线上
+  // return 'ws://129.211.215.59:8899/ws';
 }
 
 
 class AppConfig {
+  static const title = "BBT";
   static late String wsUrl;
   static const reqUrl = 'http://129.211.215.59:8860';
+  // static const reqUrl = 'http://10.0.2.2:8860';
+  // static const reqUrl = 'http://192.168.1.103:8860';
   // 用户协议
   static const agreeUrl = 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1';
   
@@ -30,4 +35,9 @@ class AppConfig {
   static Future<void> init() async {
     wsUrl = await getWsUrl();
   }
+}
+
+class HttpStatus {
+  static const success = 200;
+  static const fail = 201;
 }

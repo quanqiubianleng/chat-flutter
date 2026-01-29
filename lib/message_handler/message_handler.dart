@@ -26,7 +26,7 @@ class MessageHandler {
 
   /// 全局处理入口（在 WebSocket onMessage 中调用）
   Future<void> process(pb.Event event) async {
-    print('获取消息process');
+    print('获取消息process delivery=${event.delivery} seq=${event.seq}');
 
     // 1. 处理会话列表同步（优先处理！）
     if (event.type == WSEventType.conversationListSync) {
@@ -41,6 +41,7 @@ class MessageHandler {
       return;
     }
 
+
     // 新增：明确定义聊天消息类型白名单
     const chatMessageTypes = {
       WSEventType.message,
@@ -53,6 +54,16 @@ class MessageHandler {
       WSEventType.redPacket,
       WSEventType.withdraw,
       WSEventType.transfer,
+
+      // 系统消息
+      WSEventType.follow,
+      WSEventType.unFollow,
+
+      // 创建群组
+      WSEventType.createGroup,
+      WSEventType.addGroupMembers,
+      WSEventType.groupMute,
+      WSEventType.groupClearMute,
     };
 
     // 如果不是聊天消息类型，直接返回（不保存、不处理）

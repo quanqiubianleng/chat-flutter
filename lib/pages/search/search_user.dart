@@ -118,7 +118,7 @@ class _SearchUserState extends State<SearchUser> {
                             final user = _searchResults[index];
                             return _buildUserItem(
                               avatarUrl:
-                                  user['avatar'] ?? 'https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1',
+                                  user['avatar_url'] ?? 'https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png',
                               name: user['username'] ?? user['name'] ?? '未知用户',
                               address: _formatAddress(user['wallet_address']),
                               userMap: user, // 传入完整数据，点击时使用
@@ -237,8 +237,6 @@ class _SearchUserState extends State<SearchUser> {
           MaterialPageRoute(
             builder: (context) => UserInfo(
               userId: userMap['userId'] ?? 0,
-              name: name,
-              avatarUrl: avatarUrl,
               // 你可以根据需要传更多字段
             ),
           ),
@@ -252,7 +250,28 @@ class _SearchUserState extends State<SearchUser> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: ListTile(
-          leading: CircleAvatar(backgroundImage: NetworkImage(avatarUrl)),
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 46,
+              height: 46,
+              child: (avatarUrl as String?)?.isNotEmpty == true
+                  ? Image.network(
+                avatarUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.person,
+                  size: 30,
+                  color: Colors.orange,
+                ),
+              )
+                  : const Icon(
+                Icons.person,
+                size: 30,
+                color: Colors.orange,
+              ),
+            ),
+          ),
           title: Text(
             name,
             style: const TextStyle(fontWeight: FontWeight.w500),

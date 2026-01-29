@@ -120,7 +120,7 @@ class FollowTab extends StatelessWidget {
                 content:
                     "BBT 链上数据 | BBT 生态重磅新品\nDeFi+社交挖矿+DAO三角驱动\n\n11亿总量永不增发\n10% 节点、10% 空投、50% 挖矿、5% 保...",
                 imageUrl:
-                    "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
+                    "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
                 likeCount: 112,
                 commentCount: 3,
                 link: "https://idap.cbd.ink/#/?login?...",

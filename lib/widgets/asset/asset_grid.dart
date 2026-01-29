@@ -9,7 +9,7 @@ class AssetGrid extends StatelessWidget {
     final items = [
       {"i": Icons.token, "t": "Token", "c": const Color(0xFF00C853)},
       {"i": Icons.image, "t": "NFT", "c": const Color(0xFFFF8F00)},
-      {"i": Icons.card_giftcard, "t": "vBOX", "c": const Color(0xFF8E24AA)},
+      {"i": Icons.card_giftcard, "t": "BBT社区", "c": const Color(0xFF8E24AA)},
       {"i": Icons.vpn_key, "t": "Key", "c": const Color(0xFF5C6BC0)},
     ];
 

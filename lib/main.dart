@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'core/cache/user_cache.dart';
+import 'modules/chat/models/offline_message.dart';
 import 'navigation/main_tab_scaffold.dart';
 import 'services/user_service.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
@@ -30,9 +31,6 @@ void main() async {
   // 初始化连接地址
   await AppConfig.init();
 
-  // ws链接
-  await initGlobalServices();
-
   // 给 Android 强行换上带 FTS5、Porter Stemmer、JSON1 等全功能的 sqlite3
   if (Platform.isAndroid) {
     await applyWorkaroundToOpenSqlite3OnOldAndroidVersions();
@@ -43,7 +41,8 @@ void main() async {
   final db = await DatabaseHelper.instance.database;
   Global.db = db;
 
-
+  // ws链接
+  await initGlobalServices();
 
   runApp(
     ProviderScope(
@@ -75,7 +74,7 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
 
     final deviceNo = await DeviceUtils.getDeviceId();
     await UserCache.saveDevice(deviceNo);
-
+    print('"deviceNo:"${deviceNo}');
     final api = UserApi();
 
     try {
@@ -101,10 +100,15 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
 
       await UserCache.saveUserId(info.userId);
       await UserCache.saveDid(info.did);
+      await UserCache.saveAvatar(info.avatarUrl);
+      await UserCache.saveNickname(info.username);
       print("GET Response: ${userInfo}");
+
 
       // 刷新用户provider
       ref.refresh(userProvider);
+      ref.refresh(myAvatarProvider);
+      ref.refresh(myNicknameProvider);
 
     } on DioError catch (e) {
       print("请求出错: ${e.error}");

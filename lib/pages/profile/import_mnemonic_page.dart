@@ -8,6 +8,8 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:url_launcher/url_launcher.dart'; // 新增：打开网页
 import 'package:education/config/app_config.dart';
 
+import '../../core/global.dart';
+
 class ImportMnemonicPage extends StatefulWidget {
   final String? initialMnemonic;
   final VoidCallback? onImportSuccess; // 新增回调
@@ -105,6 +107,9 @@ class _ImportMnemonicPageState extends State<ImportMnemonicPage> {
 
       Navigator.pop(context);
       widget.onImportSuccess?.call(); // 触发刷新
+      // 3. WebSocket 切换账号
+      ws.switchAccount();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已导入 ${importUser["username"] ?? "新账号"}')),
       );
@@ -174,7 +179,7 @@ class _ImportMnemonicPageState extends State<ImportMnemonicPage> {
         ),
         centerTitle: true,
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

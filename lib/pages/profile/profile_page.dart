@@ -14,7 +14,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../modules/chat/models/offline_message.dart';
 import '../../providers/user_provider.dart';
+import '../user/setting.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -26,9 +28,9 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage> {
   // 当前登录用户
   User currentUser = User(
-    username: "加载中...",
-    walletAddress: "加载中...",
-    avatarUrl: "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
+    username: "未登录",
+    walletAddress: "未登录",
+    avatarUrl: "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
     level: "Lv.122",
     userId: 0,
     did: "",
@@ -104,12 +106,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       // await UserCache.saveToken(userInfo['token']);
       await UserCache.saveUserId(userInfo['userId']);
       await UserCache.saveDid(userInfo['did_id']);
+      await UserCache.saveAvatar(userInfo['avatar_url']);
       setState(() {
         currentUser = User.fromMap(userInfo);
         this.accountList = accountList;
-
         isLoading = false;
       });
+      ref.refresh(userProvider);
     } catch (e) {
       print("加载用户信息失败1: $e");
       if (mounted) {
@@ -130,8 +133,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       await UserCache.saveToken(changeUser['token']);
       await UserCache.saveUserId(changeUser['userId']);
       await UserCache.saveDid(changeUser['did_id']);
+      await UserCache.saveAvatar(changeUser['avatar_url']);
+      await UserCache.saveNickname(changeUser['username']);
 
       ref.refresh(userProvider);
+      ref.refresh(myAvatarProvider);
+      ref.refresh(myNicknameProvider);
 
       setState(() {
         currentUser = User.fromMap(account);
@@ -186,16 +193,32 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         centerTitle: false,
         actions: [
           IconButton(
-            icon: const Icon(Icons.qr_code_scanner, color: Colors.black87),
+            icon: const Icon(Icons.qr_code, color: Colors.black87),
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -4), // ← 关键：压缩密度
+            padding: EdgeInsets.zero,                                        // 去除按钮内边距
+            constraints: const BoxConstraints(),                             // 去除最小48dp限制
             onPressed: () {},
           ),
           IconButton(
             icon: const Icon(Icons.subtitles_outlined, color: Colors.black87),
+            visualDensity: const VisualDensity(horizontal: -4, vertical: -4), // ← 关键：压缩密度
+            padding: EdgeInsets.zero,                                        // 去除按钮内边距
+            constraints: const BoxConstraints(),                             // 去除最小48dp限制
             onPressed: () {},
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined, color: Colors.black87),
-            onPressed: () {},
+            visualDensity: const VisualDensity(horizontal: -0, vertical: -4), // ← 关键：压缩密度
+            padding: EdgeInsets.zero,                                        // 去除按钮内边距
+            constraints: const BoxConstraints(),                             // 去除最小48dp限制
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsPage(),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -227,7 +250,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           // Shares 等列表
           SettingsSection(
             items: [
-              (icon: Icons.monetization_on, title: "Shares1", onTap: () {}),
+              (icon: Icons.monetization_on, title: "Shares", onTap: () {}),
               (icon: Icons.trending_up,     title: "成长等级", onTap: () {}),
               (icon: Icons.emoji_events,    title: "我的成就", onTap: () {}),
             ],
@@ -389,24 +412,34 @@ class _AccountListContent extends StatelessWidget {
                 itemBuilder: (_, i) {
                   final acc = accounts[i];
                   return ListTile(
-                    leading: CircleAvatar(
-                      radius: 24,
-                      backgroundImage:
-                          (acc["avatar_url"] as String?)?.isNotEmpty == true
-                          ? NetworkImage(acc["avatar_url"])
-                          : null,
-                      backgroundColor: acc["isCurrent"] == true
-                          ? Colors.purple.shade100
-                          : Colors.pink.shade100,
-                      child: (acc["avatar_url"] as String?)?.isEmpty ?? true
-                          ? Icon(
-                              Icons.person,
-                              size: 28,
-                              color: acc["isCurrent"]
-                                  ? Colors.purple.shade700
-                                  : Colors.pink.shade700,
-                            )
-                          : null,
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8), // 小圆角，可调整
+                      child: Container(
+                        width: 48, // 正方形边长
+                        height: 48,
+                        color: acc["isCurrent"] == true
+                            ? Colors.purple.shade100
+                            : Colors.pink.shade100,
+                        child: (acc["avatar_url"] as String?)?.isNotEmpty == true
+                            ? Image.network(
+                          acc["avatar_url"],
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.person,
+                            size: 28,
+                            color: acc["isCurrent"] == true
+                                ? Colors.purple.shade700
+                                : Colors.pink.shade700,
+                          ),
+                        )
+                            : Icon(
+                          Icons.person,
+                          size: 28,
+                          color: acc["isCurrent"] == true
+                              ? Colors.purple.shade700
+                              : Colors.pink.shade700,
+                        ),
+                      ),
                     ),
                     title: Text(
                       acc["username"]?.toString().isNotEmpty == true
@@ -417,27 +450,18 @@ class _AccountListContent extends StatelessWidget {
                         fontSize: 16,
                       ),
                     ),
-                    // subtitle: Text(
-                    //   formatAddress(acc["wallet_address"]?.toString()),
-                    //   style: const TextStyle(color: Colors.grey, fontSize: 13),
-                    // )
                     subtitle: Row(
                       children: [
                         Text(
                           formatAddress(acc["wallet_address"]?.toString()),
                           style: const TextStyle(color: Colors.grey, fontSize: 13),
                         ),
+
+                        const SizedBox(width: 10),
                         // 复制按钮
-                        IconButton(
-                          icon: const Icon(Icons.copy, size: 18, color: Color(0xFF999999)),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(
-                            minWidth: 32,
-                            minHeight: 32,
-                          ), // 正确写法
-                          splashRadius: 20,
-                          tooltip: "复制",
-                          onPressed: () async {
+                        InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () async {
                             await Clipboard.setData(ClipboardData(text: acc["wallet_address"]));
                             Fluttertoast.showToast(
                               msg: "已复制钱包地址",
@@ -448,6 +472,14 @@ class _AccountListContent extends StatelessWidget {
                               fontSize: 15,
                             );
                           },
+                          child: Container(
+                            padding: const EdgeInsets.all(4), // 内边距
+                            child: const Icon(
+                              Icons.copy,
+                              size: 16, // 更小的图标
+                              color: Color(0xFF999999),
+                            ),
+                          ),
                         ),
                       ],
                     ),

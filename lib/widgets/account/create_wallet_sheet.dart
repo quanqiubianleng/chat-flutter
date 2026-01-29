@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 // 你的 api
 import 'package:education/widgets/account/backup_mnemonic_sheet.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/global.dart';
+import '../../providers/user_provider.dart';
 
 class CreateWalletSheet {
   static void show(
@@ -21,15 +24,15 @@ class CreateWalletSheet {
   }
 }
 
-class _CreateWalletContent extends StatefulWidget {
+class _CreateWalletContent extends ConsumerStatefulWidget {
   final VoidCallback onSuccess;
   _CreateWalletContent({required this.onSuccess});
 
   @override
-  State<_CreateWalletContent> createState() => _CreateWalletContentState();
+  ConsumerState<_CreateWalletContent> createState() => _CreateWalletContentState();
 }
 
-class _CreateWalletContentState extends State<_CreateWalletContent> {
+class _CreateWalletContentState extends ConsumerState<_CreateWalletContent> {
   bool _loading = false;
   final api = UserApi();
 
@@ -50,6 +53,26 @@ class _CreateWalletContentState extends State<_CreateWalletContent> {
       final String mnemonic = data['mnemonic'];
       final String address = data['wallet_address'];
       final String didId = data['did_id'] ?? '';
+
+      // ============ 关键修复：创建成功 = 自动切换到新账号 ============
+      // 1. 保存新凭证（后端通常会返回新 token）
+      if (result['token'] != null) {
+        await UserCache.saveToken(result['token']);
+      }
+      await UserCache.saveUserId(result['userId'] ?? data['userId']);
+      await UserCache.saveDid(didId);
+
+      // 2. 刷新全局用户状态
+      // ignore: use_build_context_synchronously
+      if (mounted) {
+        // 或者如果你用的是 ref.refresh
+        ref.refresh(userProvider);
+      }
+
+      // 3. WebSocket 切换账号
+      ws.switchAccount();
+
+      // ============ 结束修复 ============
 
       // 成功 → 跳转到备份页面
       Navigator.pop(context); // 关闭当前弹窗

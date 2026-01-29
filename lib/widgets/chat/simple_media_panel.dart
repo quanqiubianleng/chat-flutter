@@ -19,12 +19,16 @@ class SimpleMediaPanel extends StatelessWidget {
   /// 点击红包回调
   final VoidCallback? onRedPacket;
 
+  /// 点击转账
+  final VoidCallback? onTransfer;
+
   const SimpleMediaPanel({
     Key? key,
     this.visible = false,
     this.onAlbumPicked,
     this.onPhotoTaken,
     this.onRedPacket,
+    this.onTransfer,
   }) : super(key: key);
 
   // 相册多选
@@ -95,7 +99,7 @@ class SimpleMediaPanel extends StatelessWidget {
               _buildItem(
                 icon: Icons.swap_horiz,
                 label: "转账",
-                onTap: () => onRedPacket?.call(),
+                onTap: () => onTransfer?.call(),
               ),
             ],
           ),

@@ -55,8 +55,8 @@ class WSEventType {
   static const String video         = 'video';         // 视频
   static const String file          = 'file';          // 文件
   static const String emoji         = 'emoji';         // 表情包
-  static const String invite         = 'invite';         // 链接
-  static const String image         = 'image';         // 链接
+  static const String invite         = 'invite';         // 邀请
+  static const String image         = 'image';         // 图片
 
   // 业务消息
   static const String redPacket     = 'red_packet';     // 红包
@@ -78,6 +78,15 @@ class WSEventType {
   // 事件消息
   static const String follow    = 'follow';    // 关注
   static const String unFollow    = 'unfollow';    // 取消关注
+
+  // 群组
+  static const String createGroup    = 'create_group';    // 创建群组
+  static const String updateGroupTitle    = 'update_group_title';    // 更新群组昵称
+  static const String updateGroupSpeakLimit    = 'update_group_speak_limit';    // 更新群组发言频率
+  static const String addGroupMembers    = 'add_group_members';    // 添加群组成员
+  static const String removeGroupMembers    = 'remove_group_members';    // 移除群组成员
+  static const String groupMute    = 'group_mute';    // 群组禁言
+  static const String groupClearMute    = 'group_clear_mute';    // 群组禁言
 }
 
 /// 消息状态（可选，用于 UI 显示）

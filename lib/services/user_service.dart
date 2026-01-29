@@ -21,9 +21,27 @@ class UserApi {
     return resp.data;
   }
 
+  /// 获取其他用户信息
+  Future<Map<String, dynamic>> getUserOtherInfo([Map<String, dynamic>? query]) async {
+    final resp = await _client.get("/v1/users/userOtherInfo", data: query);
+    return resp.data;
+  }
+
   /// 关注用户
   Future<Map<String, dynamic>> follower(Map<String, dynamic> data) async {
     final resp = await _client.post("/v1/users/follower", data: data);
+    return resp.data;
+  }
+
+  /// 获取关注我、我关注的列表
+  Future<Map<String, dynamic>> getFollowerList(Map<String, dynamic> data) async {
+    final resp = await _client.post("/v1/users/getFollowerList", data: data);
+    return resp.data;
+  }
+
+  /// 获取好友
+  Future<Map<String, dynamic>> getMyFriend(Map<String, dynamic> data) async {
+    final resp = await _client.post("/v1/users/getMyFriend", data: data);
     return resp.data;
   }
 

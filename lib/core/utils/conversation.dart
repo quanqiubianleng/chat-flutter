@@ -11,7 +11,7 @@ String generateTempConversationId({
 }) {
   if (isGroup) {
     // 群聊：格式 "temp_group_负groupId"
-    return "temp_group_-${userIdB.abs()}";
+    return "temp_group_${userIdB.abs()}";
   } else {
     // 单聊：确保排序一致
     final min = userIdA < userIdB ? userIdA : userIdB;
@@ -27,5 +27,11 @@ int getUserIDsByConversationId(String conversationId, int userId){
   if(int.parse(parts[2]) == userId){
     return int.parse(parts[3]);
   }
+  return int.parse(parts[2]);
+}
+
+/// 根据会话ID获取groupId
+int getGroupIdByConversationId(String conversationId){
+  List<String> parts = conversationId.split('_');
   return int.parse(parts[2]);
 }

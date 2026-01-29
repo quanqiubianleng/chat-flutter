@@ -54,7 +54,7 @@ class OfficialRewardCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               image: const DecorationImage(
                 image: NetworkImage(
-                  "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
+                  "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
                 ),
                 fit: BoxFit.cover,
               ),
@@ -62,7 +62,7 @@ class OfficialRewardCard extends StatelessWidget {
             child: Column(
               children: [
                 Image.network(
-                  "https://i.postimg.cc/19nwP5Jj/271c104d68299e34c375ac3fe7d7fc2d524329900.webp?dl=1",
+                  "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
                   width: 120,
                 ),
                 const SizedBox(height: 20),

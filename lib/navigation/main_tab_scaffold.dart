@@ -60,8 +60,11 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
   Widget build(BuildContext context) {
     // 在 build 方法中直接监听 provider
     final badgeCounts = ref.watch(tabBadgeProvider);
-    print("badgeCounts");
-    print(badgeCounts);
+    // 强制激活两个 StreamProvider 的订阅
+    final followCounts = ref.watch(friendTabUnreadProvider).maybeWhen(
+      data: (v) => v,
+      orElse: () => 0,
+    );
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -71,10 +74,6 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
         type: BottomNavigationBarType.fixed,
         currentIndex: _currentIndex,
         onTap: (index) {
-          // 点击时清除对应tab的角标
-          final tabKeys = ['chat', 'friend', 'market', 'profile'];
-          final tabKey = tabKeys[index];
-          // ref.read(tabBadgeProvider.notifier).clearBadge(tabKey);
 
           setState(() => _currentIndex = index);
         },
@@ -82,7 +81,7 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
           // Tab 1: 消息
           BottomNavigationBarItem(
             icon: BadgeIcon(
-              icon: Icons.chat_bubble_outline_rounded,
+              icon: Icons.textsms_outlined,
               badgeCount: badgeCounts['chat'] ?? 0,
               isActive: _currentIndex == 0,
             ),
@@ -91,8 +90,8 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
           // Tab 2: 朋友/通讯录
           BottomNavigationBarItem(
             icon: BadgeIcon(
-              icon: Icons.contacts_outlined,
-              badgeCount: badgeCounts['friend'] ?? 0,
+              icon: Icons.perm_contact_cal_outlined,
+              badgeCount: followCounts,
               isActive: _currentIndex == 1,
             ),
             label: '通讯录',
@@ -100,7 +99,7 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
           // Tab 3: 列表/动态
           BottomNavigationBarItem(
             icon: BadgeIcon(
-              icon: Icons.article_outlined,
+              icon: Icons.donut_small,
               badgeCount: badgeCounts['market'] ?? 0,
               isActive: _currentIndex == 2,
             ),

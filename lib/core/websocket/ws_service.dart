@@ -7,10 +7,18 @@ import 'package:education/core/websocket/ws_event.dart';
 import 'package:education/pb/protos/chat.pb.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:rxdart/rxdart.dart';
+
+import '../../modules/chat/models/offline_message.dart';
 
 enum WSStatus { disconnected, connecting, connected }
 
 class WSService {
+  // 新增：状态流（BehaviorSubject 会记住最新值，新订阅者立即拿到当前状态）
+  final _statusController = BehaviorSubject<WSStatus>.seeded(WSStatus.disconnected);
+  Stream<WSStatus> get statusStream => _statusController.stream;
+
+
   // 单例
   static final WSService instance = WSService._internal();
   factory WSService() => instance;
@@ -35,10 +43,20 @@ class WSService {
   Timer? _heartbeatTimer;
   Timer? _reconnectTimer;
 
+  void dispose() {
+    _statusController.close();
+  }
+
+  void _setStatus(WSStatus newStatus) {
+    if (_status == newStatus) return;
+    _status = newStatus;
+    _statusController.add(newStatus);
+  }
+
   final List<Event> _sendQueue = [];
   final Map<String, List<void Function(Event)>> _listeners = {};
   /// 新增：全局监听（所有消息都会走到）
-final List<void Function(Event)> _allListeners = [];
+  final List<void Function(Event)> _allListeners = [];
 
   WSStatus get status => _status;
 
@@ -62,14 +80,16 @@ final List<void Function(Event)> _allListeners = [];
   Future<void> _connect() async {
     if (_status == WSStatus.connecting) return;
 
-    _status = WSStatus.connecting;
+    // _status = WSStatus.connecting;
+    _setStatus(WSStatus.connecting);
     _cancelReconnect();
 
     try {
       final token = await UserCache.getToken();
       if (token == null || token.isEmpty) {
         print("WS 连接失败：token 为空");
-        _status = WSStatus.disconnected;
+        // _status = WSStatus.disconnected;
+        _setStatus(WSStatus.disconnected);
         return;
       }
 
@@ -79,7 +99,8 @@ final List<void Function(Event)> _allListeners = [];
       _channel = WebSocketChannel.connect(Uri.parse(url));
       await _channel!.ready;
 
-      _status = WSStatus.connected;
+      // _status = WSStatus.connected;
+      _setStatus(WSStatus.connected);
       print("WebSocket 已连接 (userId: $userId)");
 
       _startHeartbeat();
@@ -93,7 +114,8 @@ final List<void Function(Event)> _allListeners = [];
 
     } catch (e) {
       print("WS 连接异常: $e");
-      _status = WSStatus.disconnected;
+      // _status = WSStatus.disconnected;
+      _setStatus(WSStatus.disconnected);
       _scheduleReconnect();
     }
   }
@@ -115,12 +137,14 @@ final List<void Function(Event)> _allListeners = [];
       },
       onDone: () {
         print("WS 连接断开");
-        _status = WSStatus.disconnected;
+        // _status = WSStatus.disconnected;
+        _setStatus(WSStatus.disconnected);
         _scheduleReconnect();
       },
       onError: (err) {
         print("WS 错误: $err");
-        _status = WSStatus.disconnected;
+        // _status = WSStatus.disconnected;
+        _setStatus(WSStatus.disconnected);
         _scheduleReconnect();
       },
     );
@@ -142,6 +166,9 @@ final List<void Function(Event)> _allListeners = [];
 
     send(event);
     print("已发送 switch_user (userId=$userId, did=$did)");
+
+    // 获取离线、同步消息
+    await syncAllOfflineMessages();
   }
 
   // 公开的切换账号方法（不重连，直接发 switch_user）
@@ -254,7 +281,8 @@ final List<void Function(Event)> _allListeners = [];
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     _channel = null;
-    _status = WSStatus.disconnected;
+    // _status = WSStatus.disconnected;
+    _setStatus(WSStatus.disconnected);
     _sendQueue.clear();
     print("WebSocket 已手动断开");
   }

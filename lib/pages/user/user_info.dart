@@ -1,28 +1,25 @@
+import 'package:education/config/app_config.dart';
 import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/follower_repository.dart';
 import 'package:education/pb/protos/chat.pb.dart';
 import 'package:education/services/user_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:fixnum/fixnum.dart';
 import 'package:education/core/websocket/ws_event.dart';
 import 'package:education/pages/chat/single_chat.dart';
 import 'package:education/providers/user_provider.dart';
 
+import '../../core/utils/conversation.dart';
 import '../../providers/follower_provider.dart';
 
 class UserInfo extends ConsumerStatefulWidget {
   final int userId;
-  final String name;
-  final String avatarUrl;
 
   const UserInfo({
     super.key,
     required this.userId,
-    required this.name,
-    required this.avatarUrl,
   });
 
   @override
@@ -32,38 +29,60 @@ class UserInfo extends ConsumerStatefulWidget {
 class _UserInfoState extends ConsumerState<UserInfo> {
   final api = UserApi();
 
+  String _convID = ""; // 存储当前会话ID
   bool _isLoading = false;      // 按钮加载状态
-  bool _isFollowed = false;     // 当前是否已关注
+  int _isFollowed = 0;     // 当前是否已关注
   int tabIndex = 0;     // tabIndex
   late FollowerRepository followerRepo;
+
+  Map<String, dynamic>? currentUser; // 使用 Map 存储用户信息
+
+  // 加载状态
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
     // 延迟获取 context
     followerRepo = ref.read(followerRepositoryProvider);
-    _checkFollow();
+    _loadUserData();
   }
 
-  /// 是否关注
-  Future<void> _checkFollow() async {
-    final uidAsync = await ref.read(userProvider.future);  // 等待 Future 完成
+  /// 加载用户信息 + 模拟多账号列表
+  Future<void> _loadUserData() async {
+    if (!mounted) return;
+    setState(() => isLoading = true);
 
-    if (uidAsync == null) {
-      setState(() => _isFollowed = false);
-      return;
+    try {
+      final userInfo = await api.getUserOtherInfo({"userId": widget.userId});
+      // 获取当前用户ID
+      final uidAsync = await ref.read(userProvider.future);
+      final currentUserId = uidAsync!;
+      final convID = generateTempConversationId(userIdA: currentUserId, userIdB: widget.userId, isGroup: false);
+
+      print("userInfo");
+      print(userInfo);
+      setState(() {
+        currentUser = userInfo;
+        isLoading = false;
+        _isFollowed = userInfo['is_friend'];
+        _convID = convID;
+      });
+    } catch (e) {
+      print("加载用户信息失败1: $e");
+      if (mounted) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("加载失败，下拉重试")));
+      }
     }
-
-    final follow = await followerRepo.isFollowing(uidAsync, widget.userId);
-    setState(() {
-      _isFollowed = follow;
-    });
   }
+
   /// 关注 / 取消关注
   Future<void> _toggleFollow() async {
 
     final uidAsync = ref.read(userProvider);
-
     final uid = uidAsync.value;
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -73,43 +92,43 @@ class _UserInfoState extends ConsumerState<UserInfo> {
     }
 
     if (_isLoading || uid == 0) return; // UID 未准备好
-
     setState(() {
       _isLoading = true;
     });
 
     try {
       final resp = await api.follower({"userId": widget.userId});
-
-      bool success = resp['code'] == 1;
-      String msg = resp['msg'] ?? (_isFollowed ? '取消关注成功' : '关注成功');
+      bool success = resp['code'] == HttpStatus.success;
+      String msg = resp['msg'] ?? (_isFollowed > 0 ? '取消关注成功' : '关注成功');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg)),
       );
-
+      _loadUserData();
       if (success) {
         // 关注更新sqlite
-        if(_isFollowed){
+        if(_isFollowed > 0){
           await followerRepo.unfollow(uid, widget.userId);
         }else{
           await followerRepo.follow(uid, widget.userId);
         }
 
-        final type = _isFollowed ? "unfollow" : "follow";
+        final type = _isFollowed > 0 ? "unfollow" : "follow";
         setState(() {
-          _isFollowed = !_isFollowed;
           _isLoading = false;
         });
+
+        final tempClientMsgId = const Uuid().v4();
+        final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
+        final convID = generateTempConversationId(isGroup: false, userIdA: widget.userId, userIdB: uid);
 
         final msg = Event()
         ..delivery = WSDelivery.single
         ..type = type
         ..fromUser = Int64(uid)
         ..toUser = Int64(widget.userId)
-        ..clientMsgId = Uuid().v4()           // 客户端防重
+        ..clientMsgId = tempClientMsgId          // 客户端防重
         ..content = '关注了你'
-        ..timestamp = Int64(DateTime.now().millisecondsSinceEpoch);
-
+        ..timestamp = Int64(tempTimestamp);
         ws.send(msg);
 
         if (resp["isFriend"]){
@@ -118,9 +137,10 @@ class _UserInfoState extends ConsumerState<UserInfo> {
           ..type = WSEventType.message
           ..fromUser = Int64(uid)
           ..toUser = Int64(widget.userId)
-          ..clientMsgId = Uuid().v4()           // 客户端防重
+          ..conversationId = convID
+          ..clientMsgId = tempClientMsgId          // 客户端防重
           ..content = '我们已互相关注，可以开始聊天了'
-          ..timestamp = Int64(DateTime.now().millisecondsSinceEpoch);
+          ..timestamp = Int64(tempTimestamp);
 
           ws.send(msg2);
         }
@@ -128,7 +148,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
     } catch (e) {
       print(e.toString());
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFollowed ? '取消关注失败' : '关注失败')),
+        SnackBar(content: Text(_isFollowed > 0 ? '取消关注失败' : '关注失败')),
       );
     } finally {
       setState(() {
@@ -183,7 +203,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
         ),
       ),
 
-      body: Stack(
+      body: isLoading ? const Center(child: CircularProgressIndicator()) : Stack(
         children: [
           Column(
             children: [
@@ -202,7 +222,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: Image.network(
-                            widget.avatarUrl,
+                            currentUser!['avatar_url'] ?? '',
                             width: 60,
                             height: 60,
                             fit: BoxFit.cover,
@@ -212,7 +232,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: Text(
-                            widget.name,
+                            currentUser!['username'] ?? '未知用户',
                             style: const TextStyle(
                               color: Colors.black,
                               fontSize: 22,
@@ -229,10 +249,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
                               context,
                               MaterialPageRoute(
                                 builder: (_) => DeBoxChatPage(
-                                  chatId: "",
-                                  chatName: widget.name,
-                                  toUser: Int64(widget.userId),
-                                  isGroup: false,
+                                  chatId: _convID,
                                 ),
                               ),
                             );
@@ -262,12 +279,12 @@ class _UserInfoState extends ConsumerState<UserInfo> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                             decoration: BoxDecoration(
-                              color: _isFollowed ? Colors.grey : const Color(0xFF08AD56),
+                              color: _isFollowed > 0 ? Colors.grey : const Color(0xFF08AD56),
                               borderRadius: BorderRadius.circular(20),
-                              border: _isFollowed ? Border.all(color: Colors.white) : null,
+                              border: _isFollowed > 0 ? Border.all(color: Colors.white) : null,
                             ),
                             child: Text(
-                              _isFollowed ? '已关注' : '关注',
+                              currentUser!['is_friend'] == 0 ? '关注' : (currentUser!['is_friend'] == 1 ? '已关注' : '朋友'),
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 13,
@@ -279,13 +296,35 @@ class _UserInfoState extends ConsumerState<UserInfo> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'MOD 很懒，还没有设置简介～',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    Text(
+                      '备注：${currentUser!["remark"]}',
+                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Text(
+                          '${currentUser!['i_follow'] ?? 0}',
+                          style: TextStyle(color: Colors.black, fontSize: 15),
+                        ),
+                        const Text(
+                          ' 关注',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                        const SizedBox(width: 15),
+                        Text(
+                          '${currentUser!['follow_me'] ?? 0}',
+                          style: TextStyle(color: Colors.black, fontSize: 15),
+                        ),
+                        const Text(
+                          ' 粉丝',
+                          style: TextStyle(color: Colors.grey, fontSize: 13),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      '1名用户在这里',
+                      'MOD 很懒，还没有设置简介～',
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                   ],
@@ -321,19 +360,35 @@ class _UserInfoState extends ConsumerState<UserInfo> {
 
               // 内容区空状态
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min, // 关键：不强制撑满
-                  children: [
-                    Image.asset(
-                      'assets/images/empty_chat_empty.jpg',
-                      height: 120,
-                      color: Colors.grey[300],
-                      colorBlendMode: BlendMode.srcIn,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(), // 允许下拉刷新手感（可选）
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: MediaQuery.of(context).size.height -
+                          MediaQuery.of(context).padding.top -
+                          kToolbarHeight -
+                          200, // 粗略预留其他区域高度，可根据实际调整
                     ),
-                    const SizedBox(height: 20),
-                    const Text('什么都没有', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                  ],
+                    child: IntrinsicHeight(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'assets/images/error.png',
+                            height: 150,
+                            color: Colors.grey[300],
+                            colorBlendMode: BlendMode.modulate,
+                            errorBuilder: (context, error, stackTrace) {
+                              print('Asset 加载失败: $error');
+                              return const Icon(Icons.error, color: Colors.red, size: 120);
+                            },
+                          ),
+                          const SizedBox(height: 20),
+                          const Text('什么都没有', style: TextStyle(fontSize: 16, color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

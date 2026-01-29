@@ -13,20 +13,20 @@ import 'package:education/providers/chat_providers.dart'; // 你的 Riverpod pro
 import 'package:education/providers/user_provider.dart';
 import 'package:education/core/utils/conversation.dart';
 
+import '../../core/sqlite/user_repository.dart';
+import '../../modules/chat/models/chat_display_item.dart';
+import '../../services/user_service.dart';
+import '../../widgets/user/user.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
 
 
 class DeBoxChatPage extends ConsumerStatefulWidget {
   final String chatId;        // conversationId（可以是 int 或 String）
-  final String chatName;
-  final Int64 toUser;         // 单聊时用，群聊可传 0
-  final bool isGroup;
 
   const DeBoxChatPage({
     Key? key,
     required this.chatId,
-    required this.chatName,
-    required this.toUser,
-    this.isGroup = false,
   }) : super(key: key);
 
   @override
@@ -39,10 +39,15 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
   int _toUserId = 0; // 定义为成员变量
   int _currentUserId = 0; // 存储当前用户ID
   bool _isInitializing = false;
+  String chatName = "";
+  String _chatAvatar = "";
+
+  final api = UserApi();
 
   @override
   void initState() {
     super.initState();
+    initializeDateFormatting();          // ← 加这里（无参 = 所有 locale）
     _initializeUserData();
   }
 
@@ -61,19 +66,40 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
     try {
       // 获取当前用户ID
       final uidAsync = await ref.read(userProvider.future);
-      _currentUserId = uidAsync!;
+      final currentUserId = uidAsync!;
 
       // 计算 toUser
-      _toUserId = widget.toUser.toInt();
-      if (widget.toUser.toInt() == 0 && widget.chatId.isNotEmpty) {
-        _toUserId = getUserIDsByConversationId(widget.chatId, _currentUserId!);
+      final revUserId = getUserIDsByConversationId(widget.chatId, currentUserId);
+
+      // 更新会话昵称
+      final userInfo = await api.getUserOtherInfo({"userId": revUserId});
+      final info = User.fromMap(userInfo);
+
+      final userRsp = UserRepository(Global.db);
+      final uInfo = await userRsp.getUser(revUserId);
+      if(uInfo != null){
+        if (info.username != "" && uInfo.username != info.username) {
+          await userRsp.updateUsername(revUserId, info.username, false);
+        }
+        if (info.avatarUrl != "" && uInfo.avatarUrl != info.avatarUrl) {
+          await userRsp.updateAvatar(revUserId, info.avatarUrl, false);
+        }
+      }else{
+        await userRsp.updateUsername(revUserId, info.username, false);
+        await userRsp.updateAvatar(revUserId, info.avatarUrl, false);
       }
 
-      print('初始化完成: currentUserId=$_currentUserId, toUserId=$_toUserId');
+
+      print('初始化完成: currentUserId=$currentUserId, avatarUrl=${info.avatarUrl}');
 
       // 初始化完成后刷新UI
       if (mounted) {
-        setState(() {});
+        setState(() {
+          chatName = info.username;
+          _toUserId = revUserId;
+          _currentUserId = currentUserId;
+          _chatAvatar = info.avatarUrl;
+        });
       }
     } finally {
       _isInitializing = false;
@@ -84,33 +110,20 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
   Future<void> _sendMessage(String text, String type, String mediaUrl, {Map<String, dynamic>? extra,}) async {
     if (text.trim().isEmpty) return;
 
-
-    // 用 Riverpod 获取当前 UID
-    final uidAsync = await ref.read(userProvider.future);
-    final currentUid = uidAsync;
-    if (currentUid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先登录')),
-      );
-      return;
-    }
-
     // 1. 生成临时消息（乐观显示）
     final tempClientMsgId = const Uuid().v4();
     final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-    final convID = generateTempConversationId(isGroup: widget.isGroup, userIdA: _toUserId, userIdB: currentUid!);
 
 
     final tempMessage = pb.Event()
       ..clientMsgId = tempClientMsgId
-      ..fromUser = Int64(currentUid)
+      ..fromUser = Int64(_currentUserId)
       ..toUser = Int64(_toUserId)
-      ..conversationId = widget.chatId != "" ? widget.chatId : convID
-      ..delivery = widget.isGroup ? WSDelivery.group : WSDelivery.single
+      ..conversationId = widget.chatId
+      ..delivery = WSDelivery.single
       ..type = _mapToWSEventType(type)
       ..content = text.trim()
       ..timestamp = Int64(tempTimestamp)
-      ..senderNickname = widget.chatName
       ..mediaUrl = mediaUrl
       ..extra = _encodeExtra(extra)
       ..status = WSMessageStatus.sending; // 可在 MessageBubble 中显示“发送中”
@@ -131,9 +144,6 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
     });
 
     // 2. 真正发送到服务器
-    print("currentUid");
-    print(currentUid);
-    print(Int64(_toUserId));
     try {
       ws.send(tempMessage);
       // 成功后可更新 status 为 'sent'（监听 WebSocket ACK 可实现）
@@ -149,14 +159,18 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
   /// 将 UI 类型映射为协议枚举
   String _mapToWSEventType(String type) {
     switch (type) {
-      case 'image':
+      case WSEventType.image:
         return WSEventType.image;
-      case 'video':
+      case WSEventType.video:
         return WSEventType.video;
-      case 'voice':
+      case WSEventType.voice:
         return WSEventType.voice;
-      case 'file':
+      case WSEventType.file:
         return WSEventType.file;
+      case WSEventType.redPacket:
+        return WSEventType.redPacket;
+      case WSEventType.transfer:
+        return WSEventType.transfer;
       case 'text':
       default:
         return WSEventType.message;
@@ -180,23 +194,18 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUid = ref.watch(userProvider.select((value) => value.value));
 
     // 如果正在初始化，显示加载中
-    if (_currentUserId == 0 || _toUserId == 0 || currentUid == null) {
+    if (_currentUserId == 0 || _toUserId == 0) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    String convID = generateTempConversationId(isGroup: widget.isGroup, userIdA: _toUserId, userIdB: currentUid!);
-    if(widget.chatId != ""){
-      convID = widget.chatId;
-    }
+    String convID = widget.chatId;
 
     // 动态监听当前会话的消息
     final asyncMessages = ref.watch(messagesProvider(convID));
-
 
 
     // 监听消息变化，智能滚动到底部
@@ -241,12 +250,29 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         title: Text(
-          widget.chatName,
+          chatName,
           style: const TextStyle(color: Color.fromARGB(255, 56, 55, 55)),
         ),
         leading: const BackButton(color: Color.fromARGB(255, 56, 55, 55)),
-        actions: const [
-          Icon(Icons.more_vert, color: Color.fromARGB(255, 56, 55, 55)),
+        actions: [
+          // Icon(Icons.more_vert, color: Color.fromARGB(255, 56, 55, 55)),
+          IconButton(
+            icon: const Icon(Icons.more_vert, color: Color.fromARGB(255, 56, 55, 55)),
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -4), // ← 关键：压缩密度
+            padding: const EdgeInsets.only(right: 5),                                        // 去除按钮内边距
+            constraints: const BoxConstraints(),                             // 去除最小48dp限制
+            onPressed: () {
+              // 处理更多按钮点击
+              /*Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GroupSettingsPage(
+                    groupId: groupID,
+                  ),
+                ),
+              );*/
+            },
+          ),
         ],
       ),
       backgroundColor: const Color.fromARGB(255, 240, 241, 241),
@@ -261,10 +287,8 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
                   return const Center(child: Text('暂无消息，开始聊天吧'));
                 }
 
-                print('=== 当前消息列表（旧→新） ===');
-                for (var msg in messageList) {
-                  print('id: ${msg.msgId} | from: ${msg.fromUser} | time: ${msg.timestamp} | content: ${msg.content}');
-                }
+                // ★★★ 关键：使用 displayItemsProvider 获取分组后的列表 ★★★
+                final displayItems = ref.watch(displayItemsProvider(convID));
 
                 return GestureDetector(
                   // 点击空白区域或消息时，收起键盘
@@ -278,14 +302,21 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     reverse: true,  // 关键：倒置列表，新消息自然在底部
-                    itemCount: messageList.length,
+                    itemCount: displayItems.length,
                     itemBuilder: (context, index) {
-                      final message = messageList[messageList.length - 1 - index];
-                      return MessageBubble(
-                        message: message,
-                        // 可选：播放语音等
-                        // onPlayAudio: () => _playAudio(message.mediaUrl),
-                      );
+                      // 因为 reverse: true，所以从列表尾部取（最新在底部）
+                      final item = displayItems[index];
+
+                      if (item is DateSeparator) {
+                        // return _buildDateHeader(item.text);   // 这里传入 item.text
+                      }
+                      else if (item is MessageBubbleItem) {
+                        return MessageBubble(
+                          message: item.message,              // 传入 pb.Event
+                          showTime: item.showTime,             // 传入 bool
+                        );
+                      }
+                      return const SizedBox.shrink();
                     },
                   ),
                 );
@@ -296,9 +327,30 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
 
           // 输入栏
           ChatInputBar(
+            isGroup: false,
+            toUserId: _toUserId,
             onSendMessage: _sendMessage,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDateHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ),
       ),
     );
   }

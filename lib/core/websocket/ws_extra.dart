@@ -7,6 +7,8 @@ class RedPacketExtra {
   final int count;       // 个数
   final String? wish;
   final String rpType;   // "lucky" | "fixed" 等
+  final int status;       // 0:未领取，1：已领取
+  final int expiredAt;  // 过期时间
 
   RedPacketExtra({
     required this.redPacketId,
@@ -14,6 +16,8 @@ class RedPacketExtra {
     required this.count,
     this.wish,
     required this.rpType,
+    required this.status,
+    required this.expiredAt,
   });
 
   factory RedPacketExtra.fromJson(Map<String, dynamic> json) {
@@ -23,6 +27,8 @@ class RedPacketExtra {
       count: json['count'] as int,
       wish: json['wish'] as String?,
       rpType: json['rp_type'] as String,
+      status: json['status'] as int,
+      expiredAt: json['expired_at'] as int,
     );
   }
 
@@ -33,6 +39,8 @@ class RedPacketExtra {
       'count': count,
       if (wish != null) 'wish': wish,
       'rp_type': rpType,
+      'status': status,
+      'expired_at': expiredAt,
     };
   }
 }
@@ -71,11 +79,17 @@ class TransferExtra {
   final String transferId;
   final int amount;      // 单位：分
   final String? remark;
+  final int status;       // 0:未领取，1：已领取
+  final String? icon;
+  final int expiredAt; // 过期时间
 
   TransferExtra({
     required this.transferId,
     required this.amount,
     this.remark,
+    required this.status,
+    required this.icon,
+    required this.expiredAt,
   });
 
   factory TransferExtra.fromJson(Map<String, dynamic> json) {
@@ -83,6 +97,9 @@ class TransferExtra {
       transferId: json['transfer_id'] as String,
       amount: json['amount'] as int,
       remark: json['remark'] as String?,
+      status: json['status'] as int,
+      icon: json['icon'] as String?,
+      expiredAt: json['expired_at'] as int,
     );
   }
 
@@ -91,6 +108,9 @@ class TransferExtra {
       'transfer_id': transferId,
       'amount': amount,
       if (remark != null) 'remark': remark,
+      'status': status,
+      'icon': icon,
+      'expired_at': expiredAt,
     };
   }
 }
