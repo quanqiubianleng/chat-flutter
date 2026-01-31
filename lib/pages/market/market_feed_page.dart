@@ -118,7 +118,7 @@ class FollowTab extends StatelessWidget {
                 username: "(BBT) 链上数据 | 全面启航",
                 timeAgo: "4天前",
                 content:
-                    "BBT 链上数据 | BBT 生态重磅新品\nDeFi+社交挖矿+DAO三角驱动\n\n11亿总量永不增发\n10% 节点、10% 空投、50% 挖矿、5% 保...",
+                    "BBT 链上数据 | BBT 生态重磅新品\nDeFi+社交挖矿+DAO三角驱动\n\n",
                 imageUrl:
                     "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
                 likeCount: 112,

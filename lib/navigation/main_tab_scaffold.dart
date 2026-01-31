@@ -34,7 +34,7 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
     final messageHandler = mh.MessageHandler(ref);
 
     void listener(event) {
-      print('全局收到消息 → type=${event.type}  from=${event.fromUser}  to=${event.toUser}');
+      print('全局收到消息 → type=${event.type}  from=${event.fromUser}  status=${event.status}');
 
       // 重要：这里 ref 已经可用，可以安全调用 messageHandler.process
       messageHandler.process(event);

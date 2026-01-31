@@ -318,8 +318,6 @@ class MessageRepository {
 
     // 准备要更新的核心字段（每次消息都要刷）
     final Map<String, dynamic> updateData = {
-      'user_id': currentUserId,
-      'server_conversation_id': convId,
       'last_msg_id': message.msgId,
       'last_content': message.content ?? '',
       'last_timestamp': message.timestamp.toInt(),
@@ -330,8 +328,8 @@ class MessageRepository {
     final rowsAffected = await db.update(
       'conversations',
       updateData,
-      where: 'server_conversation_id = ?',
-      whereArgs: [convId],
+      where: 'server_conversation_id = ? AND user_id = ?',
+      whereArgs: [convId, currentUserId],
     );
 
     if (rowsAffected > 0) {
@@ -340,8 +338,8 @@ class MessageRepository {
         await db.rawUpdate(
           '''UPDATE conversations 
            SET unread_count = unread_count + 1 
-           WHERE server_conversation_id = ?''',
-          [convId],
+           WHERE server_conversation_id = ? AND user_id = ?''',
+          [convId, currentUserId],
         );
       }
       print("会话已更新: $convId");
@@ -349,7 +347,9 @@ class MessageRepository {
       // 不存在 → 完整插入新会话
       final insertData = Map<String, dynamic>.from(updateData);
       insertData.addAll({
-        'type': message.delivery == 'group' ? 'group' : 'single',
+        'user_id': currentUserId,
+        'server_conversation_id': convId,
+        'type': message.delivery == WSDelivery.group ? WSDelivery.group : WSDelivery.single,
         'unread_count': message.fromUser == currentUserId ? 0 : 1,
         'pinned': 0,
         'muted': 0,

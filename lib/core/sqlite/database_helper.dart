@@ -238,7 +238,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE conversations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_conversation_id TEXT UNIQUE NOT NULL,  -- 服务端真实ID
+        server_conversation_id TEXT NOT NULL,  -- 服务端真实ID
         user_id INTEGER NOT NULL DEFAULT 0,
         type TEXT NOT NULL,
         title TEXT,
@@ -253,7 +253,8 @@ class DatabaseHelper {
         last_read_seq INTEGER DEFAULT 0,
         is_deleted INTEGER DEFAULT 0,
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
-        updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+        UNIQUE(server_conversation_id, user_id)
       )
     ''');
 
@@ -270,7 +271,6 @@ class DatabaseHelper {
 
     await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC)');
-    await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_server_id ON conversations(server_conversation_id)');
 
     // 创建 follower 表
     await createFollowerTable(db);
