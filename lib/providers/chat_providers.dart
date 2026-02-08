@@ -8,18 +8,16 @@ import 'package:education/core/global.dart';
 import 'package:education/core/notifications/notifications.dart';
 import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
-import '../core/sqlite/database_helper.dart';
-import '../core/utils/date_utils.dart';           // ChatDateUtils
-import '../modules/chat/models/chat_display_item.dart';
+import 'package:education/core/sqlite/database_helper.dart';
+import 'package:education/core/utils/date_utils.dart';
+import 'package:education/modules/chat/models/chat_display_item.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 // ────────────────────────────────────────────────
 // 基础 Repository Provider
 // ────────────────────────────────────────────────
 final messageRepositoryProvider = Provider<MessageRepository>((ref) {
-  final db = Global.db;
-  if (db == null) throw Exception('Database not initialized');
-  return MessageRepository(db);
+  return MessageRepository(Global.db);
 });
 
 // ────────────────────────────────────────────────

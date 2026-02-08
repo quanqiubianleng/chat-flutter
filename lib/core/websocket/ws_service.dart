@@ -9,7 +9,9 @@ import 'package:fixnum/fixnum.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:rxdart/rxdart.dart';
 
+import '../../modules/chat/models/offline_follower.dart';
 import '../../modules/chat/models/offline_message.dart';
+import '../utils/logger.dart';
 
 enum WSStatus { disconnected, connecting, connected }
 
@@ -87,7 +89,7 @@ class WSService {
     try {
       final token = await UserCache.getToken();
       if (token == null || token.isEmpty) {
-        print("WS 连接失败：token 为空");
+        AppLogger.d("WS 连接失败：token 为空");
         // _status = WSStatus.disconnected;
         _setStatus(WSStatus.disconnected);
         return;
@@ -101,7 +103,7 @@ class WSService {
 
       // _status = WSStatus.connected;
       _setStatus(WSStatus.connected);
-      print("WebSocket 已连接 (userId: $userId)");
+      AppLogger.d("WebSocket 已连接 (userId: $userId)");
 
       _startHeartbeat();
       _listenStream();
@@ -113,7 +115,7 @@ class WSService {
       }
 
     } catch (e) {
-      print("WS 连接异常: $e");
+      AppLogger.d("WS 连接异常: $e");
       // _status = WSStatus.disconnected;
       _setStatus(WSStatus.disconnected);
       _scheduleReconnect();
@@ -129,20 +131,20 @@ class WSService {
           _emit(event.type, event);
 
           if (event.type == 'pong') {
-            print("收到 pong");
+            AppLogger.d("收到 pong");
           }
         } catch (e) {
-          print("ProtoBuf 解析失败: $e");
+          AppLogger.d("ProtoBuf 解析失败: $e");
         }
       },
       onDone: () {
-        print("WS 连接断开");
+        AppLogger.d("WS 连接断开");
         // _status = WSStatus.disconnected;
         _setStatus(WSStatus.disconnected);
         _scheduleReconnect();
       },
       onError: (err) {
-        print("WS 错误: $err");
+        AppLogger.d("WS 错误: $err");
         // _status = WSStatus.disconnected;
         _setStatus(WSStatus.disconnected);
         _scheduleReconnect();
@@ -165,10 +167,12 @@ class WSService {
     ..clientMsgId = 'switch_user_${DateTime.now().millisecondsSinceEpoch}'; // 可选，方便排查
 
     send(event);
-    print("已发送 switch_user (userId=$userId, did=$did)");
+    AppLogger.d("已发送 switch_user (userId=$userId, did=$did)");
 
-    // 获取离线、同步消息
-    await syncAllOfflineMessages();
+    // 用本次 switch_user 的 userId 拉离线消息并写 sync_cursor，避免多账号错乱
+    await syncAllOfflineMessages(userId > 0 ? userId : null);
+    // 同步关注数据
+    await getOfflineFollowerList(userId > 0 ? userId : null);
   }
 
   // 公开的切换账号方法（不重连，直接发 switch_user）
@@ -184,14 +188,14 @@ class WSService {
   void send(Event event) {
     if (_status != WSStatus.connected || _channel == null) {
       _sendQueue.add(event);
-      print("WS 未连接，加入队列（${_sendQueue.length} 条）");
+      AppLogger.d("WS 未连接，加入队列（${_sendQueue.length} 条）");
       return;
     }
 
     try {
       _channel!.sink.add(event.writeToBuffer());
     } catch (e) {
-      print("发送失败，加入队列: $e");
+      AppLogger.d("发送失败，加入队列: $e");
       _sendQueue.add(event);
     }
   }
@@ -233,7 +237,7 @@ class WSService {
       try {
         cb(event);
       } catch (e) {
-        print('全局监听回调异常: $e');
+        AppLogger.d('全局监听回调异常: $e');
       }
     }
   }
@@ -255,7 +259,7 @@ class WSService {
   void _scheduleReconnect() {
     _cancelReconnect();
     _reconnectTimer = Timer(reconnectDelay, () {
-      print("尝试重连 WebSocket...");
+      AppLogger.d("尝试重连 WebSocket...");
       _connect();
     });
   }
@@ -267,7 +271,7 @@ class WSService {
 
   void _flushQueue() {
     if (_sendQueue.isEmpty) return;
-    print("刷新队列：${_sendQueue.length} 条");
+    AppLogger.d("刷新队列：${_sendQueue.length} 条");
     final copy = List<Event>.from(_sendQueue);
     _sendQueue.clear();
     for (final msg in copy) {
@@ -284,7 +288,7 @@ class WSService {
     // _status = WSStatus.disconnected;
     _setStatus(WSStatus.disconnected);
     _sendQueue.clear();
-    print("WebSocket 已手动断开");
+    AppLogger.d("WebSocket 已手动断开");
   }
 }
 

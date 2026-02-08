@@ -6,8 +6,14 @@ import 'package:fluttertoast/fluttertoast.dart';
 
 class ProfileHeaderCard extends StatelessWidget {
   final User user;
+  /// 点击卡片时的回调，不传则默认进入设置页
+  final VoidCallback? onTap;
 
-  const ProfileHeaderCard({super.key, required this.user});
+  const ProfileHeaderCard({
+    super.key,
+    required this.user,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -22,12 +28,16 @@ class ProfileHeaderCard extends StatelessWidget {
         : user.walletAddress;
     return InkWell(
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => SettingsPage(),
-            ),
-          );
+          if (onTap != null) {
+            onTap!();
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SettingsPage(),
+              ),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(12), // 可选：圆角水波纹
         splashColor: Colors.blue.withOpacity(0.3), // 可选：自定义水波颜色
@@ -41,13 +51,8 @@ class ProfileHeaderCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 child: user.avatarUrl.isNotEmpty
                     ? Image.network(user.avatarUrl, width: 60, height: 60, fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(color: Colors.grey[300], child: const Icon(Icons.person, size: 36, color: Colors.white)))
-                    : Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.person, size: 36, color: Colors.purple),
-                ),
+                        errorBuilder: (_, __, ___) => _placeholderAvatar())
+                    : _placeholderAvatar(),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -97,6 +102,15 @@ class ProfileHeaderCard extends StatelessWidget {
             ],
           ),
         ),
+    );
+  }
+
+  Widget _placeholderAvatar() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(16)),
+      child: const Icon(Icons.person, size: 36, color: Colors.purple),
     );
   }
 }

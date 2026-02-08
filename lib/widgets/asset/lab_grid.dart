@@ -1,6 +1,7 @@
 // lib/widgets/asset/lab_grid.dart
 import 'package:flutter/material.dart';
 import 'package:education/widgets/common/grid_icon_item.dart';
+import 'package:education/pages/profile/favorites_page.dart';
 
 class LabGrid extends StatelessWidget {
   const LabGrid({super.key});
@@ -8,11 +9,13 @@ class LabGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      {"i": Icons.explore, "t": "发现"},
-      {"i": Icons.wallet, "t": "口令红包"},
-      {"i": Icons.smart_toy, "t": "AI Bot"},
-      {"i": Icons.groups, "t": "社区"},
-      {"i": Icons.favorite_border, "t": "收藏"},
+      {"i": Icons.explore, "t": "发现", "onTap": null},
+      {"i": Icons.wallet, "t": "口令红包", "onTap": null},
+      {"i": Icons.smart_toy, "t": "AI Bot", "onTap": null},
+      {"i": Icons.groups, "t": "社区", "onTap": null},
+      {"i": Icons.favorite_border, "t": "收藏", "onTap": () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const FavoritesPage()));
+      }},
     ];
 
     return Container(
@@ -43,6 +46,7 @@ class LabGrid extends StatelessWidget {
             itemBuilder: (_, i) => GridIconItem(
               icon: items[i]["i"] as IconData,
               label: items[i]["t"] as String,
+              onTap: items[i]["onTap"] as VoidCallback?,
             ),
           ),
           const SizedBox(height: 16),

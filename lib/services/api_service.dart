@@ -3,20 +3,18 @@ import 'package:dio/dio.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:education/config/app_config.dart';
-
-import '../core/cache/user_cache.dart';
+import 'package:education/core/cache/user_cache.dart';
+import 'package:education/core/utils/logger.dart';
 
 class ApiClient {
   final Dio dio;
-  // 固定 32 字节 AES Key（前端写死）
+  // 固定 32 字节 AES Key（应由服务端下发或协商，勿提交真实密钥）
   static final List<int> aesKeyBytes =
       utf8.encode("12345678901234567890123456789012"); // 32 字节
 
-  static const String baseUrl = AppConfig.reqUrl;
-
   ApiClient() : dio = Dio(
           BaseOptions(
-            baseUrl: "$baseUrl",
+            baseUrl: AppConfig.reqUrl,
             connectTimeout: const Duration(seconds: 8),
             receiveTimeout: const Duration(seconds: 10),
             headers: {'Content-Type': 'application/json'},
@@ -125,15 +123,9 @@ class ApiClient {
           final msg = respMap["msg"] ?? "";
 
           // code != 0 或者 200 时，只做标记，不阻断响应
-          if (code == 0) {
-            // 弹出提示
-            Fluttertoast.showToast(
-              msg: msg,
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.BOTTOM,
-            );
-          }
-          if (code != 200) {
+          // 接口成功后不弹出提示
+          // if (code == 200) { Fluttertoast.showToast(...); }
+          if (code != 200 && code != 0) {
             // 可以加一个统一字段，模板里判断
             respMap["_error"] = true;
             respMap["_errorMsg"] = msg;
@@ -160,8 +152,9 @@ class ApiClient {
           final body = jsonEncode(options.data);
           buf.write(" -d '$body'");
         }
-
-        print("---- CURL ----\n$buf\n--------------");
+        if (AppConfig.isDebug) {
+          AppLogger.d("---- CURL ----\n$buf\n--------------");
+        }
         handler.next(options);
       },
     );
@@ -173,4 +166,25 @@ class ApiClient {
 
   Future<Response> get(String path, {Map<String, dynamic>? data}) =>
       dio.get(path, data: data);
+
+  /// 从 Response 取出 data，为 null 或业务错误时抛 [ApiException]
+  static Map<String, dynamic> getDataOrThrow(Response resp) {
+    final data = resp.data;
+    AppLogger.d("getDataOrThrow");
+    AppLogger.d(resp);
+    if (data == null) return data;
+    if (data is! Map<String, dynamic>) throw ApiException('响应格式错误');
+    if (data['_error'] == true) {
+      final msg = data['_errorMsg']?.toString()?.trim();
+      throw ApiException(msg != null && msg.isNotEmpty ? msg : '请求失败');
+    }
+    return data;
+  }
+}
+
+class ApiException implements Exception {
+  final String message;
+  ApiException(this.message);
+  @override
+  String toString() => 'ApiException: $message';
 }

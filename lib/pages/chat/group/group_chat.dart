@@ -14,6 +14,7 @@ import 'package:education/providers/user_provider.dart';
 import 'package:education/core/utils/conversation.dart';
 
 import '../../../core/sqlite/user_repository.dart';
+import '../../../core/utils/logger.dart';
 import '../../../modules/chat/models/chat_display_item.dart';
 import '../../../modules/chat/models/group.dart';
 import '../../../providers/group_provider.dart';
@@ -67,8 +68,6 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
       // 更新会话昵称
       final userInfo = await api.getGroupInfo({"group_id": groupID});
       final info = GroupInfo.fromJson(userInfo);
-      print("userInfo");
-      print(userInfo);
       if (info.Name != "") {
         await userRsp.updateUsername(groupID, info.Name, true);
       }
@@ -183,7 +182,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
       final jsonString = jsonEncode(extra);
       return utf8.encode(jsonString);  // 直接返回 List<int>，完美匹配 protobuf 的 bytes 字段
     } catch (e) {
-      print('Extra 编码失败: $e');
+      AppLogger.d('Extra 编码失败: $e');
       return <int>[];
     }
   }
@@ -193,8 +192,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
   Widget build(BuildContext context) {
     // 禁言信息
     final muteStatus = ref.watch(groupMuteResultStreamProvider(_groupID));
-    print("muteStatus");
-    print(muteStatus);
+
     // 当前用户
     final currentUid = ref.watch(userProvider.select((value) => value.value));
 
@@ -364,8 +362,6 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
           // 输入区域（禁言时替换成提示条）
           muteStatus.when(
             data: (status) {
-              print("status");
-              print(status);
               if (!status.isMuted || _isTalk) {
                 // 正常状态：显示输入栏
                 return ChatInputBar(
@@ -447,12 +443,15 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
               child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
             ),
 
-            error: (_, __) => const SizedBox(
+            error: (_, __) => SizedBox(
               height: 56,
               child: Center(
-                child: Text(
-                  "禁言状态加载中…",
-                  style: TextStyle(color: Colors.grey),
+                child: GestureDetector(
+                  onTap: () => ref.invalidate(groupMuteResultStreamProvider(_groupID)),
+                  child: Text(
+                    "禁言状态加载失败，点击重试",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
               ),
             ),

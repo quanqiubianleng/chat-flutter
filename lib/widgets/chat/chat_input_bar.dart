@@ -4,6 +4,7 @@ import 'package:education/widgets/chat/simple_media_panel.dart';
 import 'package:flutter/material.dart';
 import '../../core/utils/chat_media_uploader.dart';
 import '../../core/utils/get_string_uuid.dart';
+import '../../core/utils/logger.dart';
 import '../../core/utils/timer.dart';
 import '../../core/websocket/ws_event.dart';
 import '../../core/websocket/ws_extra.dart';
@@ -230,7 +231,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   // 关闭媒体文件发送中弹窗
   void _hideUploadProgressOverlay() {
-    print("关闭弹窗");
     _progressOverlayEntry?.remove();
     _progressOverlayEntry = null;
   }
@@ -377,7 +377,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                               durationSeconds = _audioPlayer.duration?.inSeconds ?? 0;
                               await _audioPlayer.pause(); // 暂停，释放资源
                             } catch (e) {
-                              print('读取语音时长失败: $e');
+                              AppLogger.d('读取语音时长失败: $e');
                               durationSeconds = 0; // 失败也继续发送，不阻塞
                             }
 
@@ -498,7 +498,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 context: context,
                 localPaths: paths,
                 onProgress: (current, total) {
-                  print('上传进度: $current/$total');
+                  AppLogger.d('上传进度: $current/$total');
                 },
                 onSingleUploaded: (url, folderType) {
                   // 实时发送每一条消息（最佳体验！）
@@ -546,7 +546,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
               setState(() => showMediaPanel = false);
             },
             onRedPacket: () {
-              print("点击红包");
+              AppLogger.d("点击红包");
               // TODO: 打开红包界面
               Navigator.push(
                 context,
@@ -555,7 +555,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                     toUserId: widget.toUserId,
                     onGenerateRedPacket: (int count, int amount, String wish) {
                       // 这里接收到用户输入的数量和祝福语
-                      print('用户要发 $count 个红包, 总额度：$amount，祝福语: $wish');
+                      AppLogger.d('用户要发 $count 个红包, 总额度：$amount，祝福语: $wish');
                       final redPacketExtra = RedPacketExtra(
                         redPacketId: generateRedPacketId(),
                         amount: amount,

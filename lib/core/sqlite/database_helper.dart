@@ -5,9 +5,12 @@ import 'package:fixnum/fixnum.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:education/core/sqlite/follower_table.dart';
+import 'package:education/core/sqlite/group_mute_table.dart';
+import 'package:education/core/sqlite/wallet_table.dart';
 import 'package:education/pb/protos/chat.pb.dart' as pb;
-import 'follower_table.dart';
-import 'group_mute_table.dart'; // 导入 follower 表创建函数
+
+import '../utils/logger.dart';
 
 // ==================== Event 扩展：保持不变，很好 ====================
 extension EventSqlite on pb.Event {
@@ -195,9 +198,9 @@ class DatabaseHelper {
     final path = join(dir.path, 'app.db');
     return await openDatabase(
       path,
-      version: 3, // 版本升级！
+      version: 6, // +1: wallet_keystore 增加 plain_password
       onCreate: _onCreate,
-      onUpgrade: _onUpgrade,  // 新增：实现升级逻辑
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -278,6 +281,17 @@ class DatabaseHelper {
     await createUserTable(db);
     // 创建群组禁言表
     await createGroupMuteTables(db);
+    // 创建钱包加密存储表
+    await createWalletTable(db);
+
+    // 按用户记录离线消息同步游标（避免从 messages 表推导游标在群聊/同设备多账号下不准）
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_cursor (
+        user_id INTEGER PRIMARY KEY,
+        cursor TEXT NOT NULL DEFAULT '0',
+        updated_at INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
   }
 
   // 数据表升级
@@ -294,8 +308,21 @@ class DatabaseHelper {
       await db.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_client_msg_id ON messages(client_msg_id)');
     }
 
-    // 未来版本可以继续加
-    // if (oldVersion < 3) { ... }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sync_cursor (
+          user_id INTEGER PRIMARY KEY,
+          cursor TEXT NOT NULL DEFAULT '0',
+          updated_at INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      await createWalletTable(db);
+    }
+    if (oldVersion < 6) {
+      await _addColumnIfNotExists(db, 'wallet_keystore', 'plain_password', 'TEXT');
+    }
   }
 
   // 工具函数：安全添加列
@@ -305,9 +332,9 @@ class DatabaseHelper {
 
     if (!hasColumn) {
       await db.execute('ALTER TABLE $table ADD COLUMN $column $type;');
-      print('添加列成功: $table.$column $type');
+      AppLogger.d('添加列成功: $table.$column $type');
     } else {
-      print('列已存在，无需添加: $table.$column');
+      AppLogger.d('列已存在，无需添加: $table.$column');
     }
   }
 }

@@ -1,8 +1,5 @@
-// lib/core/websocket/ws_service.dart  → 保留我上面给你的单例代码不变
-
-// lib/core/global.dart 或新建一个文件 lib/core/instances.dart
-import 'websocket/ws_service.dart';
 import 'package:education/config/app_config.dart';
+import 'package:education/core/websocket/ws_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 late final WSService ws;   // 全局唯一实例

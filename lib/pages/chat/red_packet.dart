@@ -133,7 +133,7 @@ class _RedPacketPageState extends State<RedPacketPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text(
-                  '获取更多 VBOX',
+                  '获取更多 BBT',
                   style: TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(width: 12),

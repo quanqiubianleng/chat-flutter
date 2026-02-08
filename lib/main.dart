@@ -5,19 +5,19 @@ import 'package:dio/dio.dart';
 import 'package:education/config/app_config.dart';
 import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/database_helper.dart';
-import 'package:education/core/utils/device.dart';
 import 'package:education/providers/user_provider.dart';
 import 'package:education/widgets/user/user.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'core/cache/user_cache.dart';
-import 'modules/chat/models/offline_message.dart';
-import 'navigation/main_tab_scaffold.dart';
-import 'services/user_service.dart';
+import 'package:education/core/cache/user_cache.dart';
+import 'package:education/navigation/main_tab_scaffold.dart';
+import 'package:education/services/api_service.dart';
+import 'package:education/services/user_service.dart';
+import 'package:education/core/utils/logger.dart';
 import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,32 +69,11 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
     _getAccount();
   }
 
-  /// 获取账号信息
+  /// 获取账号信息。设备号：登录成功后从 userInfo 缓存；未登录时在「设置密码」页首次创建/导入时再获取并缓存。
   Future<void> _getAccount() async {
-
-    final deviceNo = await DeviceUtils.getDeviceId();
-    await UserCache.saveDevice(deviceNo);
-    print('"deviceNo:"${deviceNo}');
     final api = UserApi();
 
     try {
-      // 先检查是否已有登录信息
-      final token = await UserCache.getToken();
-      if (token == null || token.isEmpty) {
-        // 如果没有token，进行钱包导入
-        final postResponse = await api.importWallet({
-          "did_id": "21342",
-          "password": "dfsgfsd",
-          "mnemonic": "waste source draw buddy kitchen super stage trumpet three tongue assume ring",
-          "deviceNo": "gfdgfdhgfdh",
-        });
-
-        print("POST Response: ${postResponse}");
-        await UserCache.saveToken(postResponse['token']);
-        print(jsonEncode(postResponse));
-      }
-
-      // 获取用户信息
       final userInfo = await api.getUserInfo();
       final info = User.fromMap(userInfo);
 
@@ -102,7 +81,10 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
       await UserCache.saveDid(info.did);
       await UserCache.saveAvatar(info.avatarUrl);
       await UserCache.saveNickname(info.username);
-      print("GET Response: ${userInfo}");
+      if (info.deviceNo.isNotEmpty) {
+        await UserCache.saveDevice(info.deviceNo);
+      }
+      AppLogger.d("GET Response: $userInfo");
 
 
       // 刷新用户provider
@@ -110,10 +92,12 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
       ref.refresh(myAvatarProvider);
       ref.refresh(myNicknameProvider);
 
-    } on DioError catch (e) {
-      print("请求出错: ${e.error}");
+    } on ApiException catch (e) {
+      AppLogger.e('请求业务错误: ${e.message}');
+    } on DioException catch (e) {
+      AppLogger.e('请求出错: ${e.error}', e);
       if (e.response != null) {
-        print("响应数据: ${e.response?.data}");
+        AppLogger.d('响应数据: ${e.response?.data}');
       }
     } finally {
       setState(() {

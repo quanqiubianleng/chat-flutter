@@ -5,6 +5,7 @@ import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/message_repository.dart'; // 假设你的 repo
 import 'package:education/core/websocket/ws_event.dart';
 import 'package:education/core/notifications/notifications.dart';
+import '../core/utils/logger.dart';
 import 'base_message_handler.dart';
 import 'package:education/core/sqlite/follower_repository.dart';
 
@@ -22,7 +23,7 @@ class SingleMessageHandler implements BaseMessageHandler {
 
   @override
   Future<void> handle(pb.Event event) async {
-    print('【单聊】收到消息 from=${event.fromUser} content=${event.content} status=${event.status} conversationId=${event.conversationId}');
+    AppLogger.d('【单聊】收到消息 from=${event.fromUser} content=${event.content} status=${event.status} conversationId=${event.conversationId}');
 
     // 如果是好友相关消息类型
     if (friendMessageTypes.contains(event.type)) {
@@ -50,7 +51,7 @@ class SingleMessageHandler implements BaseMessageHandler {
 
   // 关注、取消关注
   void friendHandle(pb.Event event) async {
-    print('好友相关消息类型: type=${event.type}');
+    AppLogger.d('好友相关消息类型: type=${event.type}');
     if(event.type == WSEventType.follow){
       await FollowerRepository(Global.db).follow(event.fromUser.toInt(), event.toUser.toInt());
     }else{

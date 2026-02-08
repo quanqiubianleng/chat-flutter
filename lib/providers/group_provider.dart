@@ -73,17 +73,22 @@ Future<GroupMuteResult> _computeCurrentMuteResult(
     int groupId,
     GroupMuteRepository repo,
     ) async {
-  final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  try {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-  final muteAll = await ref.watch(groupMuteAllStreamProvider(groupId).future);
-  if (muteAll != null && muteAll.isMuteAll && (muteAll.muteAllUntil == null || muteAll.muteAllUntil! > now)) {
-    return (isMuted: true, muteUntil: muteAll.muteAllUntil, isAllMute: true);
+    final muteAll = await ref.watch(groupMuteAllStreamProvider(groupId).future);
+    if (muteAll != null && muteAll.isMuteAll && (muteAll.muteAllUntil == null || muteAll.muteAllUntil! > now)) {
+      return (isMuted: true, muteUntil: muteAll.muteAllUntil, isAllMute: true);
+    }
+
+    final myMute = await ref.watch(myGroupMemberMuteProvider(groupId).future);
+    if (myMute != null && (myMute.mutedUntil == null || myMute.mutedUntil! > now)) {
+      return (isMuted: true, muteUntil: myMute.mutedUntil, isAllMute: false);
+    }
+
+    return (isMuted: false, muteUntil: null, isAllMute: false);
+  } catch (_) {
+    // 新群无数据、表未创建、DB 异常等：一律视为未禁言，避免一直显示「禁言状态加载中」
+    return (isMuted: false, muteUntil: null, isAllMute: false);
   }
-
-  final myMute = await ref.watch(myGroupMemberMuteProvider(groupId).future);
-  if (myMute != null && (myMute.mutedUntil == null || myMute.mutedUntil! > now)) {
-    return (isMuted: true, muteUntil: myMute.mutedUntil, isAllMute: false);
-  }
-
-  return (isMuted: false, muteUntil: null, isAllMute: false);
 }

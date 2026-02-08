@@ -4,27 +4,32 @@ import 'package:education/widgets/account/create_wallet_sheet.dart';
 import 'package:flutter/material.dart';
 
 class ImportAccountSheet {
+  /// [initialPassword] 从设置密码页返回时传入；已登录添加账号时可不传。
   static void show(
     BuildContext context, {
-    VoidCallback? onImportSuccess, // ← 新增这行！
+    String? initialPassword,
+    VoidCallback? onImportSuccess,
   }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _ImportAccountContent(
-        onImportSuccess: onImportSuccess, // ← 传进去
+        initialPassword: initialPassword ?? '',
+        onImportSuccess: onImportSuccess,
       ),
     );
   }
 }
 
 class _ImportAccountContent extends StatelessWidget {
-  final VoidCallback? onImportSuccess; // 新增
+  final String initialPassword;
+  final VoidCallback? onImportSuccess;
 
   const _ImportAccountContent({
+    required this.initialPassword,
     this.onImportSuccess,
-    super.key, // 加上 key，推荐
+    super.key,
   });
 
   @override
@@ -81,12 +86,9 @@ class _ImportAccountContent extends StatelessWidget {
               Navigator.pop(context);
               CreateWalletSheet.show(
                 context,
-                onSuccess: onImportSuccess ?? () {}, // 刷新列表
+                password: initialPassword,
+                onSuccess: onImportSuccess ?? () {},
               );
-              // TODO: 跳转创建钱包页面
-              // ScaffoldMessenger.of(context).showSnackBar(
-              //   const SnackBar(content: Text("即将打开创建钱包流程")),
-              // );
             },
           ),
           _buildOption(
@@ -101,7 +103,8 @@ class _ImportAccountContent extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (_) => ImportMnemonicPage(
-                    onImportSuccess: onImportSuccess, // 关键！传进去！
+                    initialPassword: initialPassword.isNotEmpty ? initialPassword : null,
+                    onImportSuccess: onImportSuccess,
                   ),
                 ),
               );

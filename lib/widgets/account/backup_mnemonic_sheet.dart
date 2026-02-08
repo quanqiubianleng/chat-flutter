@@ -160,9 +160,7 @@ class _BackupMnemonicContentState extends State<_BackupMnemonicContent> with Tic
 
                         widget.onFinalSuccess(); // 刷新账号列表
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('钱包创建成功！'), backgroundColor: Color(0xFF00D1A7)),
-                        );
+                        // 不在此处提示，创建/导入时已提示
                       },
                       child: const Text('我已备份完成', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white)),
                     ),

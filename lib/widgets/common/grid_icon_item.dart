@@ -5,17 +5,19 @@ class GridIconItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color? color;
+  final VoidCallback? onTap;
 
   const GridIconItem({
     super.key,
     required this.icon,
     required this.label,
     this.color,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
+    Widget content = LayoutBuilder(
       builder: (context, constraints) {
         // 动态计算可用高度，永远不会溢出
         final double availableHeight = constraints.maxHeight;
@@ -58,5 +60,9 @@ class GridIconItem extends StatelessWidget {
         );
       },
     );
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: content);
+    }
+    return content;
   }
 }

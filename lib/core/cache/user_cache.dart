@@ -7,6 +7,9 @@ class UserCache {
   static const _didIdKey = 'did_id';
   static const _avatarKey = 'avatar';
   static const _nicknameKey = 'nickname';
+  static const _introKey = 'user_intro';
+  static const _backgroundImageKey = 'user_background_image';
+  static const _localAvatarPathKey = 'local_avatar_path';
 
   static Future<void> saveToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -66,5 +69,35 @@ class UserCache {
   static Future<String?> getDid() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_didIdKey);
+  }
+
+  static Future<void> saveIntro(String intro) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_introKey, intro);
+  }
+
+  static Future<String?> getIntro() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_introKey);
+  }
+
+  static Future<void> saveBackgroundImage(String pathOrUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_backgroundImageKey, pathOrUrl);
+  }
+
+  static Future<String?> getBackgroundImage() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_backgroundImageKey);
+  }
+
+  static Future<void> saveLocalAvatarPath(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_localAvatarPathKey, path);
+  }
+
+  static Future<String?> getLocalAvatarPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_localAvatarPathKey);
   }
 }

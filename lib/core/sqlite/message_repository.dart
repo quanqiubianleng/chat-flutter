@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:education/pb/protos/chat.pb.dart' as pb;
 import 'package:education/modules/chat/models/conversation_info.dart';
 import '../cache/user_cache.dart';
+import '../utils/logger.dart';
 import '../websocket/ws_event.dart';
 import 'database_helper.dart'; // 假设这里定义了 Conversation 类
 import 'package:education/core/notifications/notifications.dart';
@@ -23,19 +24,24 @@ class MessageRepository {
       message.toMapForDb(),
       conflictAlgorithm: ConflictAlgorithm.abort,
     );
-    print('✅ 消息插入成功，返回ID: $result, "${message.clientMsgId}", timer："${message.timestamp}"');
+    AppLogger.d('✅ 消息插入成功，返回ID: $result, "${message.clientMsgId}", timer："${message.timestamp}"');
     // 2. 更新会话
     final currentUserId = await UserCache.getUserId();
     await _updateConversationFromMessage(message, currentUserId!);
 
     // 3. 插入FTS
     await FtsHelper.insertMessage(db, msgId: message.msgId, content: message.content, senderNickname: message.senderNickname);
-    print('✅ FTS索引插入完成');
+    AppLogger.d('✅ FTS索引插入完成');
+
+    // 4. 在线收到/发出的消息也要更新该用户的同步游标，下次拉离线时从最新位置继续
+    if (currentUserId != null && message.msgId.isNotEmpty && !message.msgId.startsWith('temp_')) {
+      await setStoredSyncCursor(currentUserId, message.msgId);
+    }
 
     // 关键：通知 Riverpod 更新
     DbNotification().notifyConversationChanged();
     DbNotification().notifyMessageChanged(message.conversationId);
-    print('✅ 通知发送完成');
+    AppLogger.d('✅ 通知发送完成');
   }
 
   /// 更新消息状态
@@ -48,7 +54,7 @@ class MessageRepository {
     );
   }
 
-  /// 更新消息状态
+  /// 更新消息状态（服务端回包把 client_msg_id 换成 msg_id 时）
   Future<void> updateMessageByClientMsgId(pb.Event message) async {
     if (message.clientMsgId.isEmpty) return;
 
@@ -66,13 +72,19 @@ class MessageRepository {
         message.clientMsgId,
       ],
     );
-    print('✅ messages 更新成功 client_msg_id="${message.clientMsgId}"');
+    AppLogger.d('✅ messages 更新成功 client_msg_id="${message.clientMsgId}"');
 
     await FtsHelper.updateMessage(db, msgId: message.msgId, content: message.content, senderNickname: message.senderNickname);
-    print('FTS 调用参数: msgId="${message.msgId}", content="${message.content}", nickname="${message.senderNickname}"');
+    AppLogger.d('FTS 调用参数: msgId="${message.msgId}", content="${message.content}", nickname="${message.senderNickname}"');
+
+    // 发送消息被服务端确认后，用服务端下发的 msg_id 更新当前用户的同步游标
+    final currentUserId = await UserCache.getUserId();
+    if (currentUserId != null && message.msgId.isNotEmpty) {
+      await setStoredSyncCursor(currentUserId, message.msgId);
+    }
 
     final result = await db.rawQuery('SELECT id,client_msg_id,conversation_id,status FROM messages');
-    print(result);
+    AppLogger.d(result);
   }
 
   /// 获取会话ID（单聊）
@@ -120,7 +132,7 @@ class MessageRepository {
         return null;
       }
     } catch (e) {
-      print('获取会话ID失败: $e');
+      AppLogger.d('获取会话ID失败: $e');
       return null;
     }
   }
@@ -174,7 +186,41 @@ class MessageRepository {
         RegExp(RegExp.escape(keyword), caseSensitive: false), '**$keyword**');
   }
 
-  /// 获取消息游标（优先使用最大 seq 对应的 msg_id）
+  /// 从 sync_cursor 表读取该用户上次同步游标（服务端下发的 nextCursor）
+  Future<String?> getStoredSyncCursor(int userId) async {
+    try {
+      final rows = await db.query(
+        'sync_cursor',
+        columns: ['cursor'],
+        where: 'user_id = ?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+      if (rows.isNotEmpty && rows.first['cursor'] != null) {
+        return rows.first['cursor'] as String;
+      }
+      return null;
+    } catch (e) {
+      AppLogger.d('❌ getStoredSyncCursor error: $e');
+      return null;
+    }
+  }
+
+  /// 写入该用户的同步游标（每批拉取后更新为服务端返回的 nextCursor）
+  Future<void> setStoredSyncCursor(int userId, String cursor) async {
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.insert(
+        'sync_cursor',
+        {'user_id': userId, 'cursor': cursor, 'updated_at': now},
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      AppLogger.d('❌ setStoredSyncCursor error: $e');
+    }
+  }
+
+  /// 从 messages 表推导游标（仅作兜底：无 sync_cursor 记录时用，群聊/同设备多账号下可能不准）
   Future<String?> getSyncCursor(int userId) async {
     try {
       final result = await db.rawQuery(
@@ -194,7 +240,7 @@ class MessageRepository {
       }
       return null;
     } catch (e) {
-      print('❌ getSyncCursorByConversation error: $e');
+      AppLogger.d('❌ getSyncCursor error: $e');
       return null;
     }
   }
@@ -203,8 +249,13 @@ class MessageRepository {
   Future<void> syncOfflineMessages(List<pb.Event> messages) async {
     if (messages.isEmpty) return;
 
-    final batch = db.batch();
     final currentUserId = await UserCache.getUserId();
+    if (currentUserId == null || currentUserId <= 0) {
+      AppLogger.w('syncOfflineMessages: 无当前用户，跳过会话更新');
+      return;
+    }
+
+    final batch = db.batch();
 
     for (final msg in messages) {
       // 先检查 msg_id 是否已存在
@@ -215,25 +266,21 @@ class MessageRepository {
         limit: 1,
       );
 
-      if (exists.isNotEmpty) {
-        // 已存在，跳过或根据需要更新状态
-        continue;
+      final alreadyExists = exists.isNotEmpty;
+
+      if (!alreadyExists) {
+        // 仅对新消息做插入
+        batch.insert(
+          'messages',
+          msg.toMapForDb(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await FtsHelper.insertMessage(db,
+            msgId: msg.msgId, content: msg.content, senderNickname: msg.senderNickname);
       }
 
-      // 插入消息
-      batch.insert(
-        'messages',
-        msg.toMapForDb(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
-
-      // 会话更新
-      // 注意这里要异步更新会话，否则 batch 仅处理消息表
-      _updateConversationFromMessage(msg, currentUserId!);
-
-      // FTS 索引更新
-      FtsHelper.insertMessage(db,
-          msgId: msg.msgId, content: msg.content, senderNickname: msg.senderNickname);
+      // 无论消息是否已存在，都要更新会话（last_msg_id、last_timestamp、未读等），否则会话列表不刷新
+      await _updateConversationFromMessage(msg, currentUserId);
     }
 
     // 提交批量插入
@@ -245,7 +292,7 @@ class MessageRepository {
       DbNotification().notifyMessageChanged(msg.conversationId);
     }
 
-    print('✅ 同步离线消息完成，总条数: ${messages.length}');
+    AppLogger.d('✅ 同步离线消息完成，总条数: ${messages.length}');
   }
 
 
@@ -254,7 +301,7 @@ class MessageRepository {
   /*Future<void> _updateConversationFromMessage(pb.Event message, int currentUserId) async {
     // 必须有服务端 conversationId，否则不处理（或抛异常）
     if (message.conversationId == "") {
-      print("Warning: message without conversationId, skipped updating conversation");
+      AppLogger.d("Warning: message without conversationId, skipped updating conversation");
       return;
     }
 
@@ -284,7 +331,7 @@ class MessageRepository {
         where: 'server_conversation_id = ?',
         whereArgs: [convId],
       );
-      print("会话更新");
+      AppLogger.d("会话更新");
     } else {
       data.addAll({
         'type': message.delivery == 'group' ? 'group' : 'single',
@@ -304,17 +351,17 @@ class MessageRepository {
         data['avatar'] = message.senderAvatar;
       }
       await db.insert('conversations', data);
-      print("会话插入");
+      AppLogger.d("会话插入");
     }
   }*/
 
   Future<void> _updateConversationFromMessage(pb.Event message, int currentUserId) async {
-    if (message.conversationId == "") {
-      print("Warning: message without conversationId, skipped");
+    final convId = message.conversationId;
+    if (convId.isEmpty) {
+      AppLogger.d("Warning: message without conversationId, skipped");
       return;
     }
-
-    final convId = message.conversationId;
+    AppLogger.d('_updateConversationFromMessage: convId=$convId, userId=$currentUserId');
 
     // 准备要更新的核心字段（每次消息都要刷）
     final Map<String, dynamic> updateData = {
@@ -342,7 +389,7 @@ class MessageRepository {
           [convId, currentUserId],
         );
       }
-      print("会话已更新: $convId");
+      AppLogger.d("会话已更新: $convId");
     } else {
       // 不存在 → 完整插入新会话
       final insertData = Map<String, dynamic>.from(updateData);
@@ -366,7 +413,7 @@ class MessageRepository {
       }
 
       await db.insert('conversations', insertData);
-      print("会话新建插入: $convId");
+      AppLogger.d("会话新建插入: $convId");
     }
   }
 
@@ -401,10 +448,8 @@ class MessageRepository {
       where: 'server_conversation_id = ?',
       whereArgs: [conversationId],
     );
-    print("updateConvTitle");
-    print(res);
-    print(title);
-    print(conversationId);
+    AppLogger.d("updateConvTitle");
+    AppLogger.d(res);
     DbNotification().notifyConversationChanged();
   }
 
@@ -416,10 +461,8 @@ class MessageRepository {
       where: 'server_conversation_id = ?',
       whereArgs: [conversationId],
     );
-    print("updateConvAvatar");
-    print(res);
-    print(avatar);
-    print(conversationId);
+    AppLogger.d("updateConvAvatar");
+    AppLogger.d(res);
     DbNotification().notifyConversationChanged();
   }
 

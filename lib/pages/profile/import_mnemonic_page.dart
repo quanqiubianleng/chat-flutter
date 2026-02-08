@@ -1,23 +1,26 @@
 // 文件：lib/pages/import_mnemonic_page.dart
+import 'package:education/config/app_config.dart';
 import 'package:education/core/cache/user_cache.dart';
+import 'package:education/core/global.dart';
+import 'package:education/core/sqlite/wallet_repository.dart';
 import 'package:education/services/user_service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:url_launcher/url_launcher.dart'; // 新增：打开网页
-import 'package:education/config/app_config.dart';
-
-import '../../core/global.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ImportMnemonicPage extends StatefulWidget {
   final String? initialMnemonic;
-  final VoidCallback? onImportSuccess; // 新增回调
+  /// 未登录时从设置密码页传入的 6 位密码
+  final String? initialPassword;
+  final VoidCallback? onImportSuccess;
 
   const ImportMnemonicPage({
     super.key,
     this.initialMnemonic,
-    this.onImportSuccess, // 必须加！
+    this.initialPassword,
+    this.onImportSuccess,
   });
 
   @override
@@ -95,15 +98,51 @@ class _ImportMnemonicPageState extends State<ImportMnemonicPage> {
   Future<void> _importAccount() async {
     try {
       final mnemonic = _controller.text.trim();
-      final deviceNo = await UserCache.getDevice() ?? "gfdgfdhgfdh";
+      final deviceNo = await UserCache.getDevice() ?? '';
+      if (deviceNo.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('设备号未就绪，请先设置密码页完成')),
+        );
+        return;
+      }
+      final repo = WalletRepository(Global.db);
+      // 优先使用传入密码，否则从本地已保存的账号获取（当前设备统一密码）
+      String pwd = widget.initialPassword?.isNotEmpty == true ? widget.initialPassword! : '';
+      if (pwd.isEmpty || pwd.length < 6) {
+        pwd = await repo.getDevicePassword() ?? '';
+      }
+      final passwordForApi = pwd.length >= 6 ? pwd : '...';
+      final importUser = await api.importWallet({
+        'did_id': '222',
+        'mnemonic': mnemonic,
+        'deviceNo': deviceNo,
+        'password': passwordForApi,
+        'type': 1,
+      });
 
-      final importUser = await api.importWallet({"did_id": "222", "mnemonic": mnemonic, "deviceNo": deviceNo, "password": "..."});
-      print(importUser);
+      final userId = (importUser['userId'] as num?)?.toInt() ?? 0;
+      final didId = importUser['did_id']?.toString() ?? '';
+      final walletAddress = importUser['wallet_address']?.toString() ?? '';
+
       await UserCache.saveToken(importUser['token']);
-      await UserCache.saveUserId(importUser['userId']);
-      await UserCache.saveDid(importUser['did_id']);
+      await UserCache.saveUserId(userId);
+      await UserCache.saveDid(didId);
 
-      
+      // 加密并存储助记词到本地（使用上面解析出的 pwd）
+      if (mnemonic.isNotEmpty && pwd.length >= 6 && didId.isNotEmpty) {
+        try {
+          await repo.saveEncryptedMnemonic(
+            userId: userId,
+            didId: didId,
+            walletAddress: walletAddress,
+            mnemonic: mnemonic,
+            password: pwd,
+            deviceNo: deviceNo,
+          );
+        } catch (e) {
+          debugPrint('WalletRepository saveEncryptedMnemonic: $e');
+        }
+      }
 
       Navigator.pop(context);
       widget.onImportSuccess?.call(); // 触发刷新

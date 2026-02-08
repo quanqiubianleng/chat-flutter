@@ -1,13 +1,14 @@
+import 'package:education/core/global.dart';
+import 'package:education/core/utils/logger.dart';
+import 'package:education/message_handler/message_handler.dart' as mh;
+import 'package:education/pages/chat/chat_page.dart';
+import 'package:education/pages/contacts/contacts_page.dart';
+import 'package:education/pages/market/market_feed_page.dart';
+import 'package:education/pages/profile/profile_page.dart';
+import 'package:education/providers/tab_badge_provider.dart';
+import 'package:education/widgets/custom_widgets.dart';
 import 'package:flutter/material.dart';
-import '../core/global.dart';
-import '../message_handler/message_handler.dart' as mh;
-import '../widgets/custom_widgets.dart';
-import '../pages/chat/chat_page.dart';
-import '../pages/market/market_feed_page.dart';
-import '../pages/contacts/contacts_page.dart';
-import '../pages/profile/profile_page.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/tab_badge_provider.dart';
 
 class MainTabScaffold extends ConsumerStatefulWidget {
   const MainTabScaffold({super.key});
@@ -34,7 +35,7 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
     final messageHandler = mh.MessageHandler(ref);
 
     void listener(event) {
-      print('全局收到消息 → type=${event.type}  from=${event.fromUser}  status=${event.status}');
+      AppLogger.d('全局收到消息 → type=${event.type}  from=${event.fromUser}  status=${event.status}');
 
       // 重要：这里 ref 已经可用，可以安全调用 messageHandler.process
       messageHandler.process(event);
@@ -74,7 +75,7 @@ class _MainTabScaffoldState extends ConsumerState<MainTabScaffold> {
         type: BottomNavigationBarType.fixed,
         currentIndex: _currentIndex,
         onTap: (index) {
-
+          ref.read(currentTabIndexProvider.notifier).state = index;
           setState(() => _currentIndex = index);
         },
         items: [

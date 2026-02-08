@@ -3,6 +3,8 @@ import 'package:education/services/user_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/utils/logger.dart';
+
 class SearchUser extends StatefulWidget {
   const SearchUser({super.key});
 
@@ -67,7 +69,7 @@ class _SearchUserState extends State<SearchUser> {
             .toList();
       });
     } catch (e) {
-      print('搜索失败: $e');
+      AppLogger.d('搜索失败: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('搜索失败，请重试')));

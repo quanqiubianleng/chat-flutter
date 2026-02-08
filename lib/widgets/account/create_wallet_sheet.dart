@@ -1,32 +1,35 @@
 // lib/widgets/account/create_wallet_sheet.dart
 
 import 'package:education/core/cache/user_cache.dart';
+import 'package:education/core/global.dart';
+import 'package:education/core/sqlite/wallet_repository.dart';
 import 'package:education/services/user_service.dart';
-import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
-// 你的 api
 import 'package:education/widgets/account/backup_mnemonic_sheet.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/global.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import '../../providers/feed_refresh_provider.dart';
 import '../../providers/user_provider.dart';
 
 class CreateWalletSheet {
   static void show(
     BuildContext context, {
-    required VoidCallback onSuccess, // 创建完刷新列表
+    String password = '',
+    required VoidCallback onSuccess,
   }) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _CreateWalletContent(onSuccess: onSuccess),
+      builder: (_) => _CreateWalletContent(password: password, onSuccess: onSuccess),
     );
   }
 }
 
 class _CreateWalletContent extends ConsumerStatefulWidget {
+  final String password;
   final VoidCallback onSuccess;
-  _CreateWalletContent({required this.onSuccess});
+  _CreateWalletContent({required this.password, required this.onSuccess});
 
   @override
   ConsumerState<_CreateWalletContent> createState() => _CreateWalletContentState();
@@ -41,32 +44,59 @@ class _CreateWalletContentState extends ConsumerState<_CreateWalletContent> {
     setState(() => _loading = true);
 
     try {
-      final deviceNo = await UserCache.getDevice() ?? "gfdgfdhgfdh";
-      final result = await api.createWallet({"did_id": "...", "password": "...", "type": 1, "deviceNo": deviceNo}); // 你后端接口
-      
-      print(result);
-      if (result['code'] != 200) {
-        throw result['msg'] ?? '创建失败';
+      final deviceNo = await UserCache.getDevice() ?? '';
+      if (deviceNo.isEmpty) {
+        Fluttertoast.showToast(msg: '设备号未就绪，请先设置密码页完成');
+        setState(() => _loading = false);
+        return;
       }
-
-      final data = result;
-      final String mnemonic = data['mnemonic'];
-      final String address = data['wallet_address'];
-      final String didId = data['did_id'] ?? '';
-
-      // ============ 关键修复：创建成功 = 自动切换到新账号 ============
-      // 1. 保存新凭证（后端通常会返回新 token）
-      if (result['token'] != null) {
-        await UserCache.saveToken(result['token']);
+      final repo = WalletRepository(Global.db);
+      // 优先使用传入密码，否则从本地已保存的账号获取（当前设备统一密码）
+      String pwd = widget.password.isNotEmpty ? widget.password : '';
+      if (pwd.isEmpty || pwd.length < 6) {
+        pwd = await repo.getDevicePassword() ?? '';
       }
-      await UserCache.saveUserId(result['userId'] ?? data['userId']);
+      final pwdForApi = pwd.length >= 6 ? pwd : '...';
+      final data = await api.createWallet({
+        'did_id': '...',
+        'password': pwdForApi,
+        'type': 1,
+        'deviceNo': deviceNo,
+      });
+      final String mnemonic = data['mnemonic'] as String? ?? '';
+      final String address = data['wallet_address'] as String? ?? '';
+      final String didId = data['did_id'] as String? ?? '';
+      final int userId = (data['userId'] as num?)?.toInt() ?? 0;
+
+      // 创建成功：保存新凭证并切换账号
+      if (data['token'] != null) {
+        await UserCache.saveToken(data['token'] as String);
+      }
+      await UserCache.saveUserId(userId);
       await UserCache.saveDid(didId);
+
+      // 加密并存储助记词到本地（使用上面解析出的 pwd）
+      if (mnemonic.isNotEmpty && pwd.length >= 6) {
+        try {
+          await repo.saveEncryptedMnemonic(
+            userId: userId,
+            didId: didId,
+            walletAddress: address,
+            mnemonic: mnemonic,
+            password: pwd,
+            deviceNo: deviceNo,
+          );
+        } catch (e) {
+          // 存储失败不影响主流程，仅记录
+          debugPrint('WalletRepository saveEncryptedMnemonic: $e');
+        }
+      }
 
       // 2. 刷新全局用户状态
       // ignore: use_build_context_synchronously
       if (mounted) {
-        // 或者如果你用的是 ref.refresh
         ref.refresh(userProvider);
+        ref.read(feedRefreshTriggerProvider.notifier).state++; // 新账号登录后刷新动态列表
       }
 
       // 3. WebSocket 切换账号

@@ -86,3 +86,6 @@ final tabBadgeProvider = Provider<Map<String, int>>((ref) {
     'mine': 0,
   };
 });
+
+/// 当前选中的 Tab 下标（0=消息 1=通讯录 2=广场 3=我的），用于「每次进入某页则重载」等
+final currentTabIndexProvider = StateProvider<int>((ref) => 0);

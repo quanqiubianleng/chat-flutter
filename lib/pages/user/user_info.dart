@@ -3,6 +3,9 @@ import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/follower_repository.dart';
 import 'package:education/pb/protos/chat.pb.dart';
 import 'package:education/services/user_service.dart';
+import 'package:education/pages/profile/user_posts_tab.dart';
+import 'package:education/pages/profile/user_comments_tab.dart';
+import 'package:education/pages/profile/user_liked_posts_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -12,6 +15,7 @@ import 'package:education/pages/chat/single_chat.dart';
 import 'package:education/providers/user_provider.dart';
 
 import '../../core/utils/conversation.dart';
+import '../../core/utils/logger.dart';
 import '../../providers/follower_provider.dart';
 
 class UserInfo extends ConsumerStatefulWidget {
@@ -26,16 +30,18 @@ class UserInfo extends ConsumerStatefulWidget {
   ConsumerState<UserInfo> createState() => _UserInfoState();
 }
 
-class _UserInfoState extends ConsumerState<UserInfo> {
+class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderStateMixin {
   final api = UserApi();
 
   String _convID = ""; // 存储当前会话ID
   bool _isLoading = false;      // 按钮加载状态
   int _isFollowed = 0;     // 当前是否已关注
-  int tabIndex = 0;     // tabIndex
+  late TabController _tabController;
   late FollowerRepository followerRepo;
 
   Map<String, dynamic>? currentUser; // 使用 Map 存储用户信息
+
+  static const List<String> _tabs = ['动态', '评论', '点赞', '自选', '语音房'];
 
   // 加载状态
   bool isLoading = true;
@@ -43,9 +49,15 @@ class _UserInfoState extends ConsumerState<UserInfo> {
   @override
   void initState() {
     super.initState();
-    // 延迟获取 context
+    _tabController = TabController(length: _tabs.length, vsync: this);
     followerRepo = ref.read(followerRepositoryProvider);
     _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   /// 加载用户信息 + 模拟多账号列表
@@ -60,8 +72,8 @@ class _UserInfoState extends ConsumerState<UserInfo> {
       final currentUserId = uidAsync!;
       final convID = generateTempConversationId(userIdA: currentUserId, userIdB: widget.userId, isGroup: false);
 
-      print("userInfo");
-      print(userInfo);
+      AppLogger.d("userInfo");
+      AppLogger.d(userInfo);
       setState(() {
         currentUser = userInfo;
         isLoading = false;
@@ -69,7 +81,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
         _convID = convID;
       });
     } catch (e) {
-      print("加载用户信息失败1: $e");
+      AppLogger.d("加载用户信息失败1: $e");
       if (mounted) {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(
@@ -146,7 +158,7 @@ class _UserInfoState extends ConsumerState<UserInfo> {
         }
       }
     } catch (e) {
-      print(e.toString());
+      AppLogger.d(e.toString());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_isFollowed > 0 ? '取消关注失败' : '关注失败')),
       );
@@ -159,275 +171,253 @@ class _UserInfoState extends ConsumerState<UserInfo> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading || currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('用户信息')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.grey[200], // 浅灰
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(100),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF07C160), Color(0xFF009A4A)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Row(
+      backgroundColor: Colors.white,
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) {
+          return [
+            SliverAppBar(
+              pinned: true,
+              expandedHeight: 100,
+              automaticallyImplyLeading: false,
+              leading: const SizedBox.shrink(),
+              flexibleSpace: Stack(
+                fit: StackFit.expand,
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
-                        color: Color(0x4D000000),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-                    ),
+                  FlexibleSpaceBar(
+                    background: _buildAppBarBackground(),
                   ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Color(0x4D000000),
-                      shape: BoxShape.circle,
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0x4D000000),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Color(0x4D000000),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
                   ),
                 ],
               ),
             ),
-          ),
+            SliverToBoxAdapter(
+              child: _buildUserInfoCard(),
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverTabBarDelegate(
+                TabBar(
+                  controller: _tabController,
+                  labelColor: const Color(0xFF00D1A7),
+                  unselectedLabelColor: const Color(0xFF666666),
+                  indicatorColor: const Color(0xFF00D1A7),
+                  tabs: _tabs.map((e) => Tab(text: e)).toList(),
+                ),
+              ),
+            ),
+          ];
+        },
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            UserPostsTab(userId: widget.userId, userInfo: currentUser),
+            UserCommentsTab(userId: widget.userId, userInfo: currentUser),
+            UserLikedPostsTab(userId: widget.userId, userInfo: currentUser),
+            _buildPlaceholderTab('自选'),
+            _buildPlaceholderTab('语音房'),
+          ],
         ),
       ),
+    );
+  }
 
-      body: isLoading ? const Center(child: CircularProgressIndicator()) : Stack(
+  Widget _buildUserInfoCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
+      decoration: const BoxDecoration(color: Colors.white),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
+          Row(
             children: [
-              // 顶部用户信息（绿色渐变区）
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
-                decoration: const BoxDecoration(
-                  color: Colors.white
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(
-                            currentUser!['avatar_url'] ?? '',
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            currentUser!['username'] ?? '未知用户',
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-
-                        // 聊天
-                        GestureDetector(
-                          onTap:  (){
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => DeBoxChatPage(
-                                  chatId: _convID,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFF08AD56)),
-                            ),
-                            child: Container(
-                              child: const Icon(
-                                  Icons.chat_bubble_outline_rounded,
-                                  size: 18,
-                                  color: const Color(0xFF08AD56)
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(width: 10),
-
-                        // 关注按钮（关键修改部分）
-                        GestureDetector(
-                          onTap:  _toggleFollow,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _isFollowed > 0 ? Colors.grey : const Color(0xFF08AD56),
-                              borderRadius: BorderRadius.circular(20),
-                              border: _isFollowed > 0 ? Border.all(color: Colors.white) : null,
-                            ),
-                            child: Text(
-                              currentUser!['is_friend'] == 0 ? '关注' : (currentUser!['is_friend'] == 1 ? '已关注' : '朋友'),
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '备注：${currentUser!["remark"]}',
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Text(
-                          '${currentUser!['i_follow'] ?? 0}',
-                          style: TextStyle(color: Colors.black, fontSize: 15),
-                        ),
-                        const Text(
-                          ' 关注',
-                          style: TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                        const SizedBox(width: 15),
-                        Text(
-                          '${currentUser!['follow_me'] ?? 0}',
-                          style: TextStyle(color: Colors.black, fontSize: 15),
-                        ),
-                        const Text(
-                          ' 粉丝',
-                          style: TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'MOD 很懒，还没有设置简介～',
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
-                    ),
-                  ],
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  currentUser!['avatar_url'] ?? '',
+                  width: 60,
+                  height: 60,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60),
                 ),
               ),
-
-              // Tab
-              Container(
-                color: Colors.white,
-                margin: const EdgeInsets.only(top: 10),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
-                  children: [
-                    const SizedBox(width: 16),
-                    _buildTab('精选', tabIndex == 0,
-                      () {
-                        setState(() {
-                          tabIndex = 0;  // 切换到 精选
-                        });
-                      },
-                    ),
-                    const SizedBox(width: 32),
-                    _buildTab('自选', tabIndex == 1,
-                      () {
-                        setState(() {
-                          tabIndex = 1;  // 切换到 精选
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              // 内容区空状态
+              const SizedBox(width: 16),
               Expanded(
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(), // 允许下拉刷新手感（可选）
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: MediaQuery.of(context).size.height -
-                          MediaQuery.of(context).padding.top -
-                          kToolbarHeight -
-                          200, // 粗略预留其他区域高度，可根据实际调整
+                child: Text(
+                  currentUser!['username'] ?? '未知用户',
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => DeBoxChatPage(chatId: _convID),
                     ),
-                    child: IntrinsicHeight(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Image.asset(
-                            'assets/images/error.png',
-                            height: 150,
-                            color: Colors.grey[300],
-                            colorBlendMode: BlendMode.modulate,
-                            errorBuilder: (context, error, stackTrace) {
-                              print('Asset 加载失败: $error');
-                              return const Icon(Icons.error, color: Colors.red, size: 120);
-                            },
-                          ),
-                          const SizedBox(height: 20),
-                          const Text('什么都没有', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                        ],
-                      ),
-                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFF08AD56)),
+                  ),
+                  child: const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF08AD56)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              GestureDetector(
+                onTap: _toggleFollow,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _isFollowed > 0 ? Colors.grey : const Color(0xFF08AD56),
+                    borderRadius: BorderRadius.circular(20),
+                    border: _isFollowed > 0 ? Border.all(color: Colors.white) : null,
+                  ),
+                  child: Text(
+                    currentUser!['is_friend'] == 0 ? '关注' : (currentUser!['is_friend'] == 1 ? '已关注' : '朋友'),
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                   ),
                 ),
               ),
             ],
           ),
-
-          // 右下角 + 按钮
-          Positioned(
-            right: 20,
-            bottom: 30,
-            child: FloatingActionButton(
-              backgroundColor: const Color(0xFF07C160),
-              onPressed: () {
-                // 发送消息或加好友逻辑
-              },
-              child: const Icon(Icons.add, color: Colors.white, size: 30),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTab(String title, bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
+          const SizedBox(height: 12),
           Text(
-            title,
-            style: TextStyle(
-              color: selected ? Colors.black87 : Colors.grey,
-              fontSize: 16,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-            ),
+            '备注：${currentUser!["remark"]}',
+            style: const TextStyle(color: Colors.grey, fontSize: 14),
           ),
-          const SizedBox(height: 8),
-          if (selected) Container(height: 3, width: 20, color: const Color(0xFF07C160)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text('${currentUser!['i_follow'] ?? 0}', style: const TextStyle(color: Colors.black, fontSize: 15)),
+              const Text(' 关注', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(width: 15),
+              Text('${currentUser!['follow_me'] ?? 0}', style: const TextStyle(color: Colors.black, fontSize: 15)),
+              const Text(' 粉丝', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            (currentUser!['intro'] ?? '').toString().isEmpty
+                ? 'MOD 很懒，还没有设置简介～'
+                : (currentUser!['intro'] as String),
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          ),
         ],
       ),
     );
   }
+
+  Widget _buildPlaceholderTab(String name) {
+    return Center(child: Text('$name - 待接入'));
+  }
+
+  Widget _buildAppBarBackground() {
+    final bgUrl = currentUser == null ? '' : (currentUser!['background_url'] ?? '').toString();
+    final hasBg = bgUrl.isNotEmpty;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: hasBg ? null : const LinearGradient(
+          colors: [Color(0xFF07C160), Color(0xFF009A4A)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: hasBg
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.network(
+                  bgUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF07C160), Color(0xFF009A4A)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(color: Colors.black26),
+              ],
+            )
+          : null,
+    );
+  }
+
+}
+
+class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverTabBarDelegate(this.tabBar);
+
+  final TabBar tabBar;
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(
+      color: Colors.white,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _SliverTabBarDelegate oldDelegate) => tabBar != oldDelegate.tabBar;
 }

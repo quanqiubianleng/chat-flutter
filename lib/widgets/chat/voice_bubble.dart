@@ -2,10 +2,10 @@
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:education/core/utils/logger.dart';
+import 'package:education/core/websocket/ws_extra.dart';
 import 'package:flutter/material.dart';
-
-import '../../core/websocket/ws_extra.dart';
-import '../../pb/protos/chat.pb.dart';
+import 'package:education/pb/protos/chat.pb.dart';
 
 class VoiceBubble extends StatefulWidget {
   final Event message; // 消息体
@@ -50,13 +50,13 @@ class _VoiceBubbleState extends State<VoiceBubble> with SingleTickerProviderStat
       final extraMap = jsonDecode(extraJsonString) as Map<String, dynamic>;
       final voiceExtra = VoiceExtra.fromJson(extraMap);
 
-      print('解析语音 extra duration：$duration');
+      AppLogger.d('解析语音 extra duration：$duration');
       setState(() {
         duration = voiceExtra.duration;
         size = voiceExtra.size ?? 0;
       });
     } catch (e) {
-      print('解析语音 extra 失败：$e');
+      AppLogger.d('解析语音 extra 失败：$e');
       duration = 10; // 兜底
     }
   }
@@ -72,7 +72,9 @@ class _VoiceBubbleState extends State<VoiceBubble> with SingleTickerProviderStat
           final extraMap = jsonDecode(utf8.decode(widget.message.extra)) as Map<String, dynamic>;
           final voiceExtra = VoiceExtra.fromJson(extraMap);
           if (voiceExtra.url.isNotEmpty) url = voiceExtra.url;
-        } catch (_) {}
+        } catch (e, st) {
+          AppLogger.w('voice_bubble parse extra', e, st);
+        }
       }
 
       await _player.play(UrlSource(url));

@@ -374,11 +374,11 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                       }
 
                       // 在这里打印数据
-                      /*print("会话数据: ${conversations.length} 条记录");
+                      print("会话数据: ${conversations.length} 条记录");
                       for (var conv in conversations) {
                         print("会话: type=${conv.type}, title=${conv.title}, server_conversation_id=${conv.serverConversationId}, "
-                            "last_content=${conv.lastContent}, user_id=${conv.userId}, avatar=${conv.avatar}");
-                      }*/
+                            "last_timestamp=${conv.lastTimestamp}, user_id=${conv.userId}, avatar=${conv.avatar}");
+                      }
 
                       // 根据当前筛选索引过滤（这里简单示例，实际可根据 Conversation.type 扩展）
                       List<Conversation> filteredList = conversations;

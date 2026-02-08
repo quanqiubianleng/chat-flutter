@@ -97,11 +97,19 @@ class _SelectMemberDialogState extends ConsumerState<SelectMemberDialog> {
       return;
     }
 
-    final currentUid = ref.read(userProvider).value;
-    final nickname = ref.read(myNicknameProvider).value;
-    final avatar = ref.read(myAvatarProvider).value;
-    names.insert(0, nickname!);
-    avatars.insert(0, avatar!);
+    final currentUid = ref.read(userProvider).valueOrNull;
+    final nickname = ref.read(myNicknameProvider).valueOrNull;
+    final avatar = ref.read(myAvatarProvider).valueOrNull;
+    if (currentUid == null || currentUid <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先登录')),
+        );
+      }
+      return;
+    }
+    names.insert(0, nickname ?? '');
+    avatars.insert(0, avatar ?? '');
     String groupName = names.join('、 ');
     try {
       final response = await groupApi.createGroup({"owner_user_id": currentUid, "member_ids": memberIds, "name": groupName, "avatar": avatars});
@@ -114,7 +122,7 @@ class _SelectMemberDialogState extends ConsumerState<SelectMemberDialog> {
         final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
         final tempMessage = pb.Event()
           ..clientMsgId = tempClientMsgId
-          ..fromUser = Int64(currentUid!)
+          ..fromUser = Int64(currentUid)
           ..toUser = Int64(currentUid)
           ..conversationId = response['conversation_id']
           ..groupId =  Int64(response['group_id'])

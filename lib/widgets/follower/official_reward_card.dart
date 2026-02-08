@@ -1,4 +1,5 @@
-// 文件：widgets/official_reward_card.dart
+// 文件：widgets/follower/official_reward_card.dart
+import 'package:education/core/utils/logger.dart';
 import 'package:flutter/material.dart';
 
 class OfficialRewardCard extends StatelessWidget {
@@ -127,7 +128,7 @@ class OfficialRewardCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           GestureDetector(
-            onTap: () => print("打开：$url"),
+            onTap: () => AppLogger.d("打开：$url"),
             child: Text(
               url,
               style: const TextStyle(

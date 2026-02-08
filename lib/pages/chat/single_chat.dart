@@ -14,6 +14,7 @@ import 'package:education/providers/user_provider.dart';
 import 'package:education/core/utils/conversation.dart';
 
 import '../../core/sqlite/user_repository.dart';
+import '../../core/utils/logger.dart';
 import '../../modules/chat/models/chat_display_item.dart';
 import '../../services/user_service.dart';
 import '../../widgets/user/user.dart';
@@ -78,10 +79,10 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
       final userRsp = UserRepository(Global.db);
       final uInfo = await userRsp.getUser(revUserId);
       if(uInfo != null){
-        if (info.username != "" && uInfo.username != info.username) {
+        if (uInfo.username != "") {
           await userRsp.updateUsername(revUserId, info.username, false);
         }
-        if (info.avatarUrl != "" && uInfo.avatarUrl != info.avatarUrl) {
+        if (uInfo.avatarUrl != "") {
           await userRsp.updateAvatar(revUserId, info.avatarUrl, false);
         }
       }else{
@@ -90,7 +91,7 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
       }
 
 
-      print('初始化完成: currentUserId=$currentUserId, avatarUrl=${info.avatarUrl}');
+      AppLogger.d('初始化完成: currentUserId=$currentUserId, avatarUrl=${info.avatarUrl}');
 
       // 初始化完成后刷新UI
       if (mounted) {
@@ -186,7 +187,7 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
       final jsonString = jsonEncode(extra);
       return utf8.encode(jsonString);  // 直接返回 List<int>，完美匹配 protobuf 的 bytes 字段
     } catch (e) {
-      print('Extra 编码失败: $e');
+      AppLogger.d('Extra 编码失败: $e');
       return <int>[];
     }
   }

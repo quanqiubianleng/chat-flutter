@@ -2,10 +2,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:education/core/cache/user_cache.dart';
 import 'package:education/providers/follower_provider.dart';
+import 'package:education/providers/tab_badge_provider.dart';
 import 'package:education/providers/user_provider.dart';
 
 import '../../core/utils/get_string_uuid.dart';
+import '../../core/utils/logger.dart';
 import '../../modules/chat/models/friend.dart';
 import '../../providers/tab_badge_provider.dart';
 import '../../services/user_service.dart';
@@ -34,10 +37,23 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
   void initState() {
     super.initState();
     api = UserApi();
-    loadFriends();
+    // 不在这里调 loadFriends，等 build 里根据登录态 + tab 再加载
   }
 
   Future<void> loadFriends() async {
+    final userId = await UserCache.getUserId();
+    if (userId == null || userId <= 0) {
+      if (mounted) {
+        setState(() {
+          friendList = [];
+          isLoading = false;
+          hasError = false;
+        });
+      }
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
       isLoading = true;
       hasError = false;
@@ -45,9 +61,6 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
 
     try {
       final response = await api.getMyFriend({});
-
-      print("loadFriends response");
-      print(response);
 
       final List<dynamic> rawList = response['data'] ?? [];
 
@@ -57,19 +70,23 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
 
       friends.sort((a, b) => a.username.compareTo(b.username));
 
-      setState(() {
-        friendList = friends;
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          friendList = friends;
+          isLoading = false;
+        });
+      }
     } catch (e, stackTrace) {
-      print("loadFriends error: $e");
-      print(stackTrace);
+      AppLogger.d("loadFriends error: $e");
+      AppLogger.d(stackTrace);
 
-      setState(() {
-        isLoading = false;
-        hasError = true;
-        errorMessage = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+          hasError = true;
+          errorMessage = e.toString();
+        });
+      }
     }
   }
 
@@ -85,23 +102,31 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
     final iFollowCounts = ref.watch(iFollowCountsProvider);
     final followMeCounts = ref.watch(followMeCountsProvider);
 
-    print('followMeCounts = $followMeCounts');
-    print('iFollowCounts = $iFollowCounts');
-
     // 新增：监听 followerListProvider 的变化
     ref.listen(followerListProvider, (previous, next) {
-      // next.isLoading 或 next.hasError 时不处理
       if (next.isLoading || next.hasError) return;
-
       final previousCount = previous?.value?.length ?? 0;
       final nextCount = next.value?.length ?? 0;
-
-      // 当朋友数量发生变化时，重新加载朋友列表
       if (previousCount != nextCount) {
         loadFriends();
       }
     });
 
+    // 切换账号后重载
+    ref.listen(userProvider, (previous, next) {
+      final prevId = previous?.valueOrNull;
+      final nextId = next.valueOrNull;
+      if (nextId != null && prevId != nextId) {
+        loadFriends();
+      }
+    });
+
+    // 每次进入通讯录 Tab 时重载一次
+    ref.listen(currentTabIndexProvider, (previous, next) {
+      if (next == 1) {
+        loadFriends();
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(

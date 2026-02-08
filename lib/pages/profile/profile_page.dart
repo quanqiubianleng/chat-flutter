@@ -2,6 +2,9 @@
 import 'package:education/core/cache/user_cache.dart';
 import 'package:education/core/global.dart';
 import 'package:education/services/user_service.dart';
+import 'package:education/pages/profile/set_password_page.dart';
+import 'package:education/pages/profile/my_info_page.dart';
+import 'package:education/widgets/account/create_wallet_sheet.dart';
 import 'package:education/widgets/account/import_account_sheet.dart';
 import 'package:education/widgets/asset/asset_grid.dart';
 import 'package:education/widgets/asset/lab_grid.dart';
@@ -14,7 +17,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import '../../core/utils/logger.dart';
 import '../../modules/chat/models/offline_message.dart';
+import '../../providers/feed_refresh_provider.dart';
 import '../../providers/user_provider.dart';
 import '../user/setting.dart';
 
@@ -60,10 +65,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
     try {
       final userInfo = await api.getUserInfo();
+
       final info = User.fromMap(userInfo);
-      print(info.deviceNo);
+      AppLogger.d("用户信息：${info} ");
+      AppLogger.d("设备号：（${info.deviceNo} ）");
       final accountLists = await api.getAccountDevice({"deviceNo": info.deviceNo});
-      print(accountLists['data']);
       // 模拟多账号（真实场景（等你有接口再删掉这块）
       await Future.delayed(const Duration(milliseconds: 400));
 
@@ -101,9 +107,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
 
       if (!mounted) return;
-      print("userInfo");
-      print(userInfo);
-      // await UserCache.saveToken(userInfo['token']);
+
+      await UserCache.saveToken(userInfo['token']);
       await UserCache.saveUserId(userInfo['userId']);
       await UserCache.saveDid(userInfo['did_id']);
       await UserCache.saveAvatar(userInfo['avatar_url']);
@@ -114,7 +119,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       });
       ref.refresh(userProvider);
     } catch (e) {
-      print("加载用户信息失败1: $e");
+      AppLogger.d("加载用户信息失败1: $e");
       if (mounted) {
         setState(() => isLoading = false);
         ScaffoldMessenger.of(
@@ -129,7 +134,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     try {
 
       final changeUser = await api.changeAccount({"did": account['did_id']});
-      print(changeUser);
       await UserCache.saveToken(changeUser['token']);
       await UserCache.saveUserId(changeUser['userId']);
       await UserCache.saveDid(changeUser['did_id']);
@@ -139,6 +143,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       ref.refresh(userProvider);
       ref.refresh(myAvatarProvider);
       ref.refresh(myNicknameProvider);
+      ref.read(feedRefreshTriggerProvider.notifier).state++; // 切换用户时刷新动态列表
 
       setState(() {
         currentUser = User.fromMap(account);
@@ -166,13 +171,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   @override
   Widget build(BuildContext context) {
 
-    // 先解构 Map，避免 build 里直接访问 JS proxy
-    final displayName =
-        currentUser.username.isNotEmpty && currentUser.username != "null"
+    final displayName = currentUser.username.isNotEmpty && currentUser.username != "null"
         ? currentUser.username
         : (currentUser.walletAddress.length > 10
-              ? "User#${currentUser.walletAddress.substring(2, 8).toUpperCase()}"
-              : "匿名用户1");
+            ? "User#${currentUser.walletAddress.substring(2, 8).toUpperCase()}"
+            : "匿名用户");
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
@@ -225,8 +228,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
-          // 个人信息卡片
-          ProfileHeaderCard(user: currentUser),
+          ProfileHeaderCard(
+            user: currentUser,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => MyInfoPage(initialUser: currentUser),
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 16),
 
           // 绿色横幅
@@ -261,23 +273,39 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     );
   }
 
-
-  /// 一行代码调用，超干净版（推荐直接扔进你的工具类）
-  /// 一、切换账号按钮（已优化，和你截图一模一样）
-  Widget switchAccountButton({
-    required BuildContext context,
-    String text = '切换账号',
-  }) {
+  /// 切换账号按钮。未登录时点击直接进入设置密码页，设置完后返回并弹出创建钱包弹窗。
+  Widget switchAccountButton({required BuildContext context, String text = '切换账号',}) {
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => AccountListSheet.show(
-        context,
-        accountList, // ← 传你的真实账号列表
-        _switchAccount, // ← 传切换方法
-        onImportSuccess: () {
-          _loadUserData(); // 导入成功后刷新当前页面！
-        },
-      ),
+      onTap: () async {
+        if (accountList.isEmpty) {
+          // 未登录：直接进入设置密码页
+          final password = await Navigator.push<String>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const SetPasswordPage(mode: SetPasswordMode.create),
+            ),
+          );
+          if (password != null && context.mounted) {
+            CreateWalletSheet.show(
+              context,
+              password: password,
+              onSuccess: () => _loadUserData(),
+            );
+          }
+        } else {
+          // 已登录：弹出账号列表
+          AccountListSheet.show(
+            context,
+            accountList,
+            _switchAccount,
+            onImportSuccess: () {
+              _loadUserData();
+              ref.read(feedRefreshTriggerProvider.notifier).state++; // 导入新账号后刷新动态列表
+            },
+          );
+        }
+      },
       child: Container(
         height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 10), // 左右稍小一点
@@ -486,15 +514,6 @@ class _AccountListContent extends StatelessWidget {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // if (acc["hasNotification"] == true)
-                        //   Container(
-                        //     width: 10,
-                        //     height: 10,
-                        //     decoration: const BoxDecoration(
-                        //       color: Colors.red,
-                        //       shape: BoxShape.circle,
-                        //     ),
-                        //   ),
                         if (acc["isCurrent"] == true) ...[
                           const SizedBox(width: 8),
                           const Icon(

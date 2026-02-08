@@ -5,6 +5,7 @@ import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/message_repository.dart';
 import '../core/sqlite/group_mute_repository.dart';
 import '../core/sqlite/group_mute_table.dart';
+import '../core/utils/logger.dart';
 import '../core/websocket/ws_event.dart';
 import 'base_message_handler.dart';
 
@@ -28,7 +29,7 @@ class GroupMessageHandler implements BaseMessageHandler {
 
   @override
   Future<void> handle(pb.Event event) async {
-    print('【群聊】群 ${event.groupId} 收到消息 status=${event.status} msg=${event.msgId} conversationId=${event.conversationId}');
+    AppLogger.d('【群聊】群 ${event.groupId} 收到消息 status=${event.status} msg=${event.msgId} conversationId=${event.conversationId}');
 
     if(event.status == WSMessageStatus.sending){
       final player = AudioPlayer();
@@ -46,8 +47,8 @@ class GroupMessageHandler implements BaseMessageHandler {
 
     // 禁言
     if (groupMuteTypes.contains(event.type)) {
-      print("取消、禁言操作");
-      print(event.type == WSEventType.groupClearMute);
+      AppLogger.d("取消、禁言操作");
+      AppLogger.d(event.type == WSEventType.groupClearMute);
       if(event.type == WSEventType.groupClearMute){
         await GroupMuteRepository(Global.db).clearMuteAll(event.groupId.toInt());
       }else{

@@ -1,15 +1,18 @@
-// 文件：widgets/debox_floating_menu.dart
+// 文件：widgets/follower/debox_floating_menu.dart
 import 'dart:ui';
+import 'package:education/pages/market/publish_dynamic_page.dart';
+import 'package:education/providers/feed_refresh_provider.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class DeBoxFloatingMenu extends StatefulWidget {
+class DeBoxFloatingMenu extends ConsumerStatefulWidget {
   const DeBoxFloatingMenu({super.key});
 
   @override
-  State<DeBoxFloatingMenu> createState() => _DeBoxFloatingMenuState();
+  ConsumerState<DeBoxFloatingMenu> createState() => _DeBoxFloatingMenuState();
 }
 
-class _DeBoxFloatingMenuState extends State<DeBoxFloatingMenu>
+class _DeBoxFloatingMenuState extends ConsumerState<DeBoxFloatingMenu>
     with SingleTickerProviderStateMixin {
   bool _isOpen = false;
   late final AnimationController _controller;
@@ -44,12 +47,12 @@ class _DeBoxFloatingMenuState extends State<DeBoxFloatingMenu>
       children: [
         // 毛玻璃背景（已完美铺满内容区）
         if (_isOpen)
-          SafeArea(
-            child: Positioned(
-              top: topInset,
-              left: 0,
-              right: 0,
-              bottom: bottomInset,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
               child: AnimatedOpacity(
                 opacity: 1.0,
                 duration: const Duration(milliseconds: 300),
@@ -77,8 +80,8 @@ class _DeBoxFloatingMenuState extends State<DeBoxFloatingMenu>
           alignment: Alignment.bottomRight,
           child: Padding(
             padding: EdgeInsets.only(
-              right: 16,
-              bottom: 28 + bottomInset,
+              right: 12,
+              bottom: 20 + bottomInset,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -89,38 +92,42 @@ class _DeBoxFloatingMenuState extends State<DeBoxFloatingMenu>
                   child: AnimatedOpacity(
                     opacity: _isOpen ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 220),
-                    child: _isOpen
+                    child:                     _isOpen
                         ? Column(
                             children: [
-                              _menuItem("抽奖", Icons.card_giftcard, const Color(0xFFFF3B30)),
-                              _menuItem("空投", Icons.flight_land, const Color(0xFF5C6BC0)),
-                              _menuItem("Meetup", Icons.record_voice_over, const Color(0xFF8E24AA)),
-                              _menuItem("Live", Icons.videocam, const Color(0xFF00C853)),
-                              _menuItem("发布到动态", Icons.edit_note, const Color(0xFF00C853)),
-                              const SizedBox(height: 28),
+                              _menuItem("抽奖", Icons.card_giftcard, const Color(0xFFFF3B30), onTap: () {}),
+                              _menuItem("空投", Icons.flight_land, const Color(0xFF5C6BC0), onTap: () {}),
+                              _menuItem("Meetup", Icons.record_voice_over, const Color(0xFF8E24AA), onTap: () {}),
+                              _menuItem("Live", Icons.videocam, const Color(0xFF00C853), onTap: () {}),
+                              _menuItem("发布到动态", Icons.edit_note, const Color(0xFF00C853), onTap: () {
+                                _toggle();
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => const PublishDynamicPage()))
+                                    .then((_) => ref.read(feedRefreshTriggerProvider.notifier).state++);
+                              }),
+                              const SizedBox(height: 16),
                             ],
                           )
                         : const SizedBox(),
                   ),
                 ),
 
-                // 主按钮
+                // 主按钮（调小）
                 GestureDetector(
                   onTap: _toggle,
                   child: Container(
-                    width: 54,
-                    height: 54,
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
                       color: const Color(0xFF00C853),
                       shape: BoxShape.circle,
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 8)),
+                        BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4)),
                       ],
                     ),
                     child: AnimatedRotation(
                       turns: _isOpen ? 0.125 : 0,
                       duration: const Duration(milliseconds: 320),
-                      child: const Icon(Icons.add, size: 38, color: Colors.white),
+                      child: const Icon(Icons.add, size: 26, color: Colors.white),
                     ),
                   ),
                 ),
@@ -133,32 +140,32 @@ class _DeBoxFloatingMenuState extends State<DeBoxFloatingMenu>
   }
 
   // 终极修复：图标完全贴右边！
-  Widget _menuItem(String title, IconData icon, Color iconColor) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      // 关键：用 Align 强制右对齐整个 Row
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 文字
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 15),
-              child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(width: 10),
-            // 图标（现在 100% 贴右边）
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.18),
-                shape: BoxShape.circle,
+  Widget _menuItem(String title, IconData icon, Color iconColor, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               ),
-              child: Icon(icon, color: iconColor, size: 32),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.18),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 22),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -2,6 +2,7 @@
 import 'package:education/pb/protos/chat.pb.dart' as pb;
 import 'package:education/core/websocket/ws_event.dart';
 import 'package:education/core/global.dart';
+import '../core/utils/logger.dart';
 import 'base_message_handler.dart';
 
 
@@ -15,7 +16,7 @@ class BroadcastMessageHandler implements BaseMessageHandler {
 
   @override
   Future<void> handle(pb.Event event) async {
-    print('【广播】系统消息: ${event.content}');
+    AppLogger.d('【广播】系统消息: ${event.content}');
 
 
 

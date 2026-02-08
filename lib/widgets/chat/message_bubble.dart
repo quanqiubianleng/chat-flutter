@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:education/core/utils/timer.dart';
 
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/logger.dart';
 import '../../modules/chat/models/chat_display_item.dart';
 
 class MessageBubble extends ConsumerWidget {
@@ -66,7 +67,7 @@ class MessageBubble extends ConsumerWidget {
         };
 
         // 消息信息
-        debugPrint('msgId: ${message.msgId}');
+        AppLogger.d('msgId: ${message.msgId}');
 
         if(message.delivery == WSDelivery.group && groupMessageTypes.contains(message.type)){
           return _groupNoticeMessage(message, showTime: showTime);

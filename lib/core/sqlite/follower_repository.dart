@@ -2,12 +2,13 @@ import 'package:sqflite/sqflite.dart';
 import 'package:education/core/sqlite/follower_table.dart';
 
 import '../notifications/notifications.dart';
+import '../utils/logger.dart';
 
 class FollowerRepository {
   final Database db;
 
   FollowerRepository(this.db) {
-    print('🧪 FollowerRepository db path = ${db.path}');
+    AppLogger.d('🧪 FollowerRepository db path = ${db.path}');
   }
 
   Future<void> follow(int fromUserId, int toUserId, {String? remark, String? name, String? avatar, String? address}) async {
@@ -92,8 +93,6 @@ class FollowerRepository {
       whereArgs: [myUserId],
       orderBy: 'created_at DESC',
     );
-    print("getMyFollowing");
-    print(maps.length);
     return maps.map((m) => Follower.fromMap(m)).toList();
   }
 
@@ -137,5 +136,51 @@ class FollowerRepository {
       orderBy: 'created_at DESC', // 可选：按创建时间倒序
     );
     return result;
+  }
+
+  /// 多账号：用服务端下发的关注数据替换「当前用户」相关行，无需 owner_user_id。
+  /// 先删 from_user_id=myUserId 或 to_user_id=myUserId，再插入 [following]（我关注的）和 [followers]（关注我的）。
+  Future<void> replaceFollowDataForUser(int myUserId, {required List<Follower> following, required List<Follower> followers,}) async {
+    await db.delete(
+      'follower',
+      where: 'from_user_id = ? OR to_user_id = ?',
+      whereArgs: [myUserId, myUserId],
+    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final f in following) {
+      await db.insert(
+        'follower',
+        {
+          'from_user_id': f.fromUserId,
+          'to_user_id': f.toUserId,
+          'name': f.name,
+          'avatar_url': f.avatarUrl,
+          'remark': f.remark,
+          'address': f.address,
+          'is_read': 0,
+          'created_at': f.createdAt,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    for (final f in followers) {
+      await db.insert(
+        'follower',
+        {
+          'from_user_id': f.fromUserId,
+          'to_user_id': f.toUserId,
+          'name': f.name,
+          'avatar_url': f.avatarUrl,
+          'remark': f.remark,
+          'address': f.address,
+          'is_read': f.isRead,
+          'created_at': f.createdAt,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    DbNotification().notifyFollowerChanged();
   }
 }

@@ -1,3 +1,5 @@
+import 'package:education/pages/profile/account_management_page.dart';
+import 'package:education/pages/user/payment_security_page.dart';
 import 'package:flutter/material.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -30,19 +32,35 @@ class SettingsPage extends StatelessWidget {
           _SettingsItem(
             icon: Icons.person_outline_rounded,
             title: '账号管理',
-            trailing: _RightArrow(),
+            trailing: const _RightArrow(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AccountManagementPage(),
+                ),
+              );
+            },
           ),
           Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
           _SettingsItem(
             icon: Icons.security_rounded,
             title: '支付与安全',
-            trailing: _RightArrow(),
+            trailing: const _RightArrow(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PaymentSecurityPage(),
+                ),
+              );
+            },
           ),
           Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
           _SettingsItem(
             icon: Icons.tune_rounded,
             title: '偏好设置',
-            trailing: _RightArrow(),
+            trailing: const _RightArrow(),
           ),
 
           const SizedBox(height: 24),
@@ -115,11 +133,13 @@ class _SettingsItem extends StatelessWidget {
   final IconData icon;
   final String title;
   final Widget trailing;
+  final VoidCallback? onTap;
 
   const _SettingsItem({
     required this.icon,
     required this.title,
     required this.trailing,
+    this.onTap,
   });
 
   @override
@@ -141,9 +161,7 @@ class _SettingsItem extends StatelessWidget {
         ),
         trailing: trailing,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        onTap: () {
-          // 这里可以添加导航逻辑
-        },
+        onTap: onTap,
       ),
     );
   }

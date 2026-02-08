@@ -12,6 +12,12 @@
 .swiftpm/
 migrate_working_dir/
 
+# Env / secrets（勿提交真实密钥与 .env）
+.env
+.env.*
+!.env.example
+secrets.*
+
 # IntelliJ related
 *.iml
 *.ipr
