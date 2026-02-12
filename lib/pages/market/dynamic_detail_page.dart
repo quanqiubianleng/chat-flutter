@@ -7,6 +7,7 @@ import 'package:education/services/user_service.dart';
 import 'package:education/widgets/chat/avatar.dart';
 import 'package:education/widgets/follower/community_post_card.dart';
 import 'package:education/widgets/follower/post_more_menu_sheet.dart';
+import 'package:education/widgets/common/share_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -261,7 +262,16 @@ class _DynamicDetailPageState extends ConsumerState<DynamicDetailPage> {
   }
 
   void _onShare() {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享功能')));
+    if (_post == null) return;
+    showDynamicShareSheet(
+      context: context,
+      post: _post!,
+      onShared: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已分享到聊天')),
+        );
+      },
+    );
   }
 
   Future<void> _onPin() async {

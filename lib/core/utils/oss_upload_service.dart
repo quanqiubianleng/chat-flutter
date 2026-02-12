@@ -147,6 +147,13 @@ class OssUploader {
     );
   }
 
+  /// 获取公开 URL（需 Bucket 已设为公共读）
+  /// 格式: https://bucket.endpoint/objectKey
+  String getPublicUrl(String objectKey) {
+    final key = objectKey.startsWith('/') ? objectKey.substring(1) : objectKey;
+    return 'https://$bucketName.$endpoint/$key';
+  }
+
   Future<String> getSignedUrl({
     required String objectKey,
     String method = 'GET',

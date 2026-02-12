@@ -17,6 +17,7 @@ import '../../../core/sqlite/user_repository.dart';
 import '../../../core/utils/logger.dart';
 import '../../../modules/chat/models/chat_display_item.dart';
 import '../../../modules/chat/models/group.dart';
+import '../../../modules/dynamic/models/post_info.dart';
 import '../../../providers/group_provider.dart';
 import '../../../services/group_service.dart';
 import 'group_setting.dart';
@@ -26,10 +27,13 @@ import 'package:intl/date_symbol_data_local.dart';
 
 class GroupChatPage extends ConsumerStatefulWidget {
   final String chatId;        // conversationId（可以是 int 或 String）
+  /// 从分享弹窗进入时携带的待分享动态，进入后自动发送
+  final PostInfo? pendingShare;
 
   const GroupChatPage({
     Key? key,
     required this.chatId,
+    this.pendingShare,
   }) : super(key: key);
 
   @override
@@ -84,14 +88,38 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
         _groupTitle = info.Name;
         _isTalk = isTalk;
       });
+      if (widget.pendingShare != null) {
+        _sendDynamicShare(widget.pendingShare!);
+      }
     } finally {
 
     }
   }
 
+  /// 发送动态分享消息
+  Future<void> _sendDynamicShare(PostInfo post) async {
+    final extra = <String, dynamic>{
+      'post_id': post.postId,
+      'user_id': post.userId,
+      'user_nickname': post.userNickname ?? '',
+      'content': post.content,
+      'type': post.type,
+      'likes_count': post.likesCount,
+      'comments_count': post.commentsCount,
+      'media_list': post.mediaList.map((m) => m.thumbnailUrl.isNotEmpty ? m.thumbnailUrl : m.url).toList(),
+      'created_at': post.createdAt,
+    };
+    await _sendMessage(
+      '分享了一条动态',
+      WSEventType.dynamicShare,
+      post.mediaList.isNotEmpty ? (post.mediaList.first.thumbnailUrl.isNotEmpty ? post.mediaList.first.thumbnailUrl : post.mediaList.first.url) : '',
+      extra: extra,
+    );
+  }
+
   /// 发送消息（乐观更新）
   Future<void> _sendMessage(String text, String type, String mediaUrl, {Map<String, dynamic>? extra,}) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty && type != WSEventType.dynamicShare) return;
 
 
     // 用 Riverpod 获取当前 UID
@@ -167,6 +195,8 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
         return WSEventType.redPacket;
       case WSEventType.transfer:
         return WSEventType.transfer;
+      case WSEventType.dynamicShare:
+        return WSEventType.dynamicShare;
       case 'text':
       default:
         return WSEventType.message;

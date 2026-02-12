@@ -1,5 +1,6 @@
 // lib/widgets/account/import_account_sheet.dart
 import 'package:education/pages/profile/import_mnemonic_page.dart';
+import 'package:education/pages/profile/import_private_key_page.dart';
 import 'package:education/widgets/account/create_wallet_sheet.dart';
 import 'package:flutter/material.dart';
 
@@ -118,9 +119,14 @@ class _ImportAccountContent extends StatelessWidget {
             subtitle: "导入单链账户",
             onTap: () {
               Navigator.pop(context);
-              // TODO: 跳转私钥导入
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("即将打开私钥导入")),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ImportPrivateKeyPage(
+                    initialPassword: initialPassword.isNotEmpty ? initialPassword : null,
+                    onImportSuccess: onImportSuccess,
+                  ),
+                ),
               );
             },
           ),

@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:fixnum/fixnum.dart';
 
+import '../../modules/chat/models/offline_follower.dart';
 import '../../providers/follower_provider.dart';
 import '../user/user_info.dart';
 
@@ -27,14 +28,6 @@ class NewSubscribersPage extends ConsumerStatefulWidget {
 }
 
 class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
-  // 新关注者列表
-  List<Map<String, dynamic>> followList = [];
-
-  // 界面状态
-  bool isLoading = true;      // 首次加载
-  bool isRefreshing = false;  // 下拉刷新中
-  String? errorMessage;       // 错误信息
-
   late final UserApi api;
   late FollowerRepository followerRepo;
 
@@ -42,65 +35,31 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
   void initState() {
     super.initState();
     api = UserApi();
-    // 延迟获取 context
     followerRepo = ref.read(followerRepositoryProvider);
-    _loadNewFollowers();
+    // 进入「新增关注」页时：本地标记已读并通知服务端，角标与列表统一清零
+    WidgetsBinding.instance.addPostFrameCallback((_) => _markNewFollowAsRead());
   }
 
-  /// 加载新关注者（支持下拉刷新）
-  Future<void> _loadNewFollowers({bool isRefresh = false}) async {
-    if (!isRefresh) {
-      setState(() {
-        isLoading = true;
-        errorMessage = null;
-      });
-    } else {
-      setState(() {
-        isRefreshing = true;
-      });
-    }
-
+  /// 本地 + 服务端均标记「关注我的」为已读
+  Future<void> _markNewFollowAsRead() async {
+    final userId = ref.read(userProvider).value;
+    if (userId == null || userId <= 0) return;
+    await followerRepo.markAllFollowAsRead(userId);
     try {
-      final response = await api.getFollowerList({"type": 2});
-      print("GET Response: $response");
-
-      final List<dynamic> rawList = response['data'] ?? [];
-      final List<Map<String, dynamic>> processedList = rawList.map((item) {
-        final map = item as Map<String, dynamic>;
-        return {
-          "userId": map['userId'] ?? '',
-          "username": map['username'] ?? "匿名用户",
-          "wallet_address": map['wallet_address'] ?? '',
-          "avatar_url": map['avatar_url'] ?? '',
-          "create_at": timestampToDateManual(map['create_at'] ?? 0),
-          "is_friend": map['is_friend'], // 是否已互关
-        };
-      }).toList();
-
-      setState(() {
-        followList = processedList;
-      });
-    } on DioError catch (e) {
-      print("请求出错: ${e.message}");
-      setState(() {
-        errorMessage = e.response?.data?['message'] ?? e.message ?? '网络请求失败';
-      });
-    } catch (e) {
-      setState(() {
-        errorMessage = '发生未知错误';
-      });
-    } finally {
-      setState(() {
-        isLoading = false;
-        isRefreshing = false;
-      });
-    }
+      await api.markFollowRead();
+    } catch (_) {}
   }
 
-  /// 关注 / 取消关注
-  Future<void> _toggleFollow(int toUserId, bool _isFollowed, int index) async {
+  /// 时间戳转展示文案（支持秒或毫秒）
+  static String _formatCreatedAt(int ts) {
+    if (ts <= 0) return '未知时间';
+    final sec = ts > 10000000000 ? ts ~/ 1000 : ts;
+    return timestampToDateManual(sec);
+  }
 
-    final uidAsync =  ref.read(userProvider);
+  /// 关注 / 取消关注（列表由 provider 驱动，无需 setState 更新列表）
+  Future<void> _toggleFollow(int toUserId, bool isFollowed) async {
+    final uidAsync = ref.read(userProvider);
     final uid = uidAsync.value;
     if (uid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -113,31 +72,19 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
       final resp = await api.follower({"userId": toUserId});
 
       bool success = resp['code'] == HttpStatus.success;
-      String msg = resp['msg'] ?? (_isFollowed ? '取消关注成功' : '关注成功');
+      String msg = resp['msg'] ?? (isFollowed ? '取消关注成功' : '关注成功');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg)),
       );
 
       if (success) {
-        // 1. 更新本地状态
-        setState(() {
-          followList[index] = {
-            ...followList[index], // 保留原有字段
-            "is_friend": !_isFollowed, // 切换状态
-          };
-        });
-        // 关注更新sqlite
-        if(_isFollowed){
+        if (isFollowed) {
           await followerRepo.unfollow(uid, toUserId);
-          _loadNewFollowers();
-        }else{
+        } else {
           await followerRepo.follow(uid, toUserId);
         }
 
-        final type = _isFollowed ? "unfollow" : "follow";
-        setState(() {
-          _isFollowed = !_isFollowed;
-        });
+        final type = isFollowed ? "unfollow" : "follow";
 
         final tempClientMsgId = const Uuid().v4();
         final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
@@ -171,18 +118,32 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
     } catch (e) {
       print(e.toString());
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFollowed ? '取消关注失败' : '关注失败')),
+        SnackBar(content: Text(isFollowed ? '取消关注失败' : '关注失败')),
       );
-    } finally {
-
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final uidAsync =  ref.read(userProvider);
+    final uidAsync = ref.watch(userProvider);
     final userId = uidAsync.value;
-    ref.read(followerRepositoryProvider).markAllFollowAsRead(userId!);
+    // 列表展示「所有关注我的人」，不区分是否已读；角标仍为未读数量
+    final fansAsync = ref.watch(followerMeProvider);
+    final followingList = ref.watch(followerMyProvider).valueOrNull ?? [];
+    final followingIds = followingList.map((e) => e.toUserId).toSet();
+
+    final allFans = fansAsync.valueOrNull ?? [];
+    final displayList = allFans.map((f) {
+      return {
+        'userId': f.fromUserId,
+        'username': f.name ?? '匿名用户',
+        'wallet_address': f.address ?? '',
+        'avatar_url': f.avatarUrl ?? '',
+        'create_at': _formatCreatedAt(f.createdAt),
+        'is_friend': followingIds.contains(f.fromUserId),
+      };
+    }).toList();
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -204,7 +165,6 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
       ),
       body: Column(
         children: [
-          // 搜索栏（预留）
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Container(
@@ -226,45 +186,20 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
           ),
           const Divider(height: 1, thickness: 0.5, color: Color(0xFFE5E5E5)),
 
-          // 列表主体
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _loadNewFollowers(isRefresh: true),
+              onRefresh: () async {
+                await getOfflineFollowerList(userId);
+              },
               child: Builder(
                 builder: (context) {
-                  // 加载中（首次）
-                  if (isLoading) {
+                  if (fansAsync.isLoading) {
                     return const Center(child: CircularProgressIndicator());
                   }
-
-                  // 错误状态
-                  if (errorMessage != null) {
+                  if (displayList.isEmpty) {
                     return Center(
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline, size: 64, color: Colors.grey),
-                          const SizedBox(height: 16),
-                          Text(
-                            '加载失败：$errorMessage',
-                            style: const TextStyle(color: Colors.grey),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _loadNewFollowers,
-                            child: const Text('重试'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // 空数据
-                  if (followList.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,  // 让 Column 只占用内容所需空间
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Image.asset(
                             'assets/images/error.png',
@@ -272,7 +207,6 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
                             color: Colors.grey[300],
                             colorBlendMode: BlendMode.modulate,
                             errorBuilder: (context, error, stackTrace) {
-                              print('Asset 加载失败: $error');
                               return const Icon(Icons.image_not_supported, size: 120, color: Colors.grey);
                             },
                           ),
@@ -281,18 +215,16 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
                             '暂无新关注者哦',
                             style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                           ),
-
                         ],
                       ),
                     );
                   }
 
-                  // 正常列表
                   return ListView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(), // 确保能下拉刷新
-                    itemCount: followList.length,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: displayList.length,
                     itemBuilder: (context, index) {
-                      final follower = followList[index];
+                      final follower = displayList[index];
                       final bool isMutual = follower['is_friend'] == true || follower['is_friend'] == 2;
 
                       return Column(
@@ -303,7 +235,7 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => UserInfo(
-                                    userId: follower['userId'] ?? 0,
+                                    userId: (follower['userId'] as int?) ?? 0,
                                     // 你可以根据需要传更多字段
                                   ),
                                 ),
@@ -316,9 +248,9 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
                               child: SizedBox(
                                 width: 46,
                                 height: 46,
-                                child: (follower['avatar_url'] as String?)?.isNotEmpty == true
+                                child: ((follower['avatar_url'] as String?) ?? '').isNotEmpty
                                     ? Image.network(
-                                  follower['avatar_url'],
+                                  (follower['avatar_url'] as String?) ?? '',
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => const Icon(
                                     Icons.person,
@@ -334,7 +266,7 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
                               ),
                             ),
                             title: Text(
-                              follower['username'] ?? '未知用户',
+                              (follower['username'] as String?) ?? '未知用户',
                               style: const TextStyle(fontWeight: FontWeight.bold),
                             ),
                             subtitle: Text(
@@ -346,37 +278,31 @@ class _NewSubscribersPageState extends ConsumerState<NewSubscribersPage> {
                                 // TODO: 调用关注接口
                                 // await api.followUser(follower['userId']);
 
-                                if(isMutual){
+                                if (isMutual) {
                                   showDialog(
                                     context: context,
                                     builder: (BuildContext context) {
                                       return AlertDialog(
-                                        title: Text('提示信息'),
-                                        content: Text('确定取消关注吗？'),
+                                        title: const Text('提示信息'),
+                                        content: const Text('确定取消关注吗？'),
                                         actions: <Widget>[
                                           TextButton(
-                                            child: Text('取消'),
-                                            onPressed: () {
-                                              Navigator.of(context).pop(); // 关闭对话框
-                                              print('用户点击了取消');
-                                            },
+                                            child: const Text('取消'),
+                                            onPressed: () => Navigator.of(context).pop(),
                                           ),
                                           TextButton(
-                                            child: Text('确定'),
+                                            child: const Text('确定'),
                                             onPressed: () {
-                                              Navigator.of(context).pop(); // 关闭对话框
-                                              print('用户点击了确定');
-                                              _toggleFollow(follower['userId'], isMutual, index);
-                                              // 执行确定操作
-
+                                              Navigator.of(context).pop();
+                                              _toggleFollow(follower['userId'] as int, isMutual);
                                             },
                                           ),
                                         ],
                                       );
                                     },
                                   );
-                                }else{
-                                  _toggleFollow(follower['userId'], isMutual, index);
+                                } else {
+                                  _toggleFollow(follower['userId'] as int, isMutual);
                                 }
                               },
                               style: ElevatedButton.styleFrom(

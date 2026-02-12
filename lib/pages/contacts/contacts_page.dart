@@ -10,6 +10,7 @@ import 'package:education/providers/user_provider.dart';
 import '../../core/utils/get_string_uuid.dart';
 import '../../core/utils/logger.dart';
 import '../../modules/chat/models/friend.dart';
+import '../../modules/chat/models/offline_follower.dart';
 import '../../providers/tab_badge_provider.dart';
 import '../../services/user_service.dart';
 import '../user/user_info.dart';
@@ -121,10 +122,11 @@ class _ContactsPageState extends ConsumerState<ContactsPage> {
       }
     });
 
-    // 每次进入通讯录 Tab 时重载一次
+    // 每次进入通讯录 Tab 时重载好友列表并同步关注数据（保证关注数/粉丝数与服务端一致）
     ref.listen(currentTabIndexProvider, (previous, next) {
       if (next == 1) {
         loadFriends();
+        getOfflineFollowerList().catchError((_) {});
       }
     });
 

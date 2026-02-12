@@ -112,10 +112,21 @@ class FollowerRepository {
     final result = await db.rawQuery('''
     SELECT COUNT(*) as count 
     FROM follower 
-    WHERE to_user_id = ? AND is_read != 1
+    WHERE to_user_id = ? AND (is_read = 0 OR is_read IS NULL)
   ''', [myUserId]);
 
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// 获取「关注我的」且未读的列表（新增关注页与角标统一数据源）
+  Future<List<Follower>> getUnreadFollowers(int myUserId) async {
+    final maps = await db.query(
+      'follower',
+      where: 'to_user_id = ? AND (is_read = 0 OR is_read IS NULL)',
+      whereArgs: [myUserId],
+      orderBy: 'created_at DESC',
+    );
+    return maps.map((m) => Follower.fromMap(m)).toList();
   }
 
   /// 用户打开朋友页面时，标记所有关注为已读（清角标）
@@ -138,9 +149,21 @@ class FollowerRepository {
     return result;
   }
 
-  /// 多账号：用服务端下发的关注数据替换「当前用户」相关行，无需 owner_user_id。
-  /// 先删 from_user_id=myUserId 或 to_user_id=myUserId，再插入 [following]（我关注的）和 [followers]（关注我的）。
+  /// 多账号：用服务端下发的关注数据替换「当前用户」相关行。
+  /// 同步时保留本地已读状态：若某条「关注我的」本地已是已读，替换后仍为已读，避免切 Tab 后角标复现。
   Future<void> replaceFollowDataForUser(int myUserId, {required List<Follower> following, required List<Follower> followers,}) async {
+    final alreadyReadFromIds = <int>{};
+    final localRead = await db.query(
+      'follower',
+      columns: ['from_user_id'],
+      where: 'to_user_id = ? AND is_read = 1',
+      whereArgs: [myUserId],
+    );
+    for (final row in localRead) {
+      final id = row['from_user_id'];
+      if (id != null) alreadyReadFromIds.add(id is int ? id : (id as num).toInt());
+    }
+
     await db.delete(
       'follower',
       where: 'from_user_id = ? OR to_user_id = ?',
@@ -165,6 +188,7 @@ class FollowerRepository {
       );
     }
     for (final f in followers) {
+      final keepRead = alreadyReadFromIds.contains(f.fromUserId);
       await db.insert(
         'follower',
         {
@@ -174,7 +198,7 @@ class FollowerRepository {
           'avatar_url': f.avatarUrl,
           'remark': f.remark,
           'address': f.address,
-          'is_read': f.isRead,
+          'is_read': keepRead ? 1 : (f.isRead == 1 ? 1 : 0),
           'created_at': f.createdAt,
           'updated_at': now,
         },

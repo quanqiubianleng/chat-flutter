@@ -1,6 +1,7 @@
 import 'package:education/modules/dynamic/models/comment_info.dart';
 import 'package:education/pages/market/dynamic_detail_page.dart';
 import 'package:education/services/dynamic_service.dart';
+import 'package:education/widgets/common/empty_state_view.dart';
 import 'package:flutter/material.dart';
 
 /// 用户评论列表 Tab（某用户发表的所有评论）
@@ -76,7 +77,7 @@ class _UserCommentsTabState extends State<UserCommentsTab> {
       );
     }
     if (_comments.isEmpty) {
-      return const Center(child: Text('暂无评论'));
+      return const EmptyStateView();
     }
     return RefreshIndicator(
       onRefresh: _load,

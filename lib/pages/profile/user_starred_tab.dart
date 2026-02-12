@@ -1,6 +1,7 @@
 import 'package:education/modules/dynamic/models/post_info.dart';
 import 'package:education/pages/market/dynamic_detail_page.dart';
 import 'package:education/services/dynamic_service.dart';
+import 'package:education/widgets/common/empty_state_view.dart';
 import 'package:education/widgets/follower/community_post_card.dart';
 import 'package:flutter/material.dart';
 
@@ -88,16 +89,7 @@ class _UserStarredTabState extends State<UserStarredTab> {
       );
     }
     if (_posts.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.bookmark_border, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text('暂无收藏', style: TextStyle(fontSize: 16, color: Colors.grey[600])),
-          ],
-        ),
-      );
+      return const EmptyStateView();
     }
     return RefreshIndicator(
       onRefresh: _load,

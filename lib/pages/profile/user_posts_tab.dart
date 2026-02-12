@@ -1,6 +1,7 @@
 import 'package:education/modules/dynamic/models/post_info.dart';
 import 'package:education/pages/market/dynamic_detail_page.dart';
 import 'package:education/services/dynamic_service.dart';
+import 'package:education/widgets/common/empty_state_view.dart';
 import 'package:education/widgets/follower/community_post_card.dart';
 import 'package:flutter/material.dart';
 
@@ -149,7 +150,7 @@ class _UserPostsTabState extends State<UserPostsTab> {
       );
     }
     if (_posts.isEmpty) {
-      return const Center(child: Text('暂无动态'));
+      return const EmptyStateView();
     }
     return RefreshIndicator(
       onRefresh: _load,

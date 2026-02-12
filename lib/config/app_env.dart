@@ -30,6 +30,8 @@ class EnvConfig {
   final String agreeUrl;
   final String privacyUrl;
   final bool isDebug;
+  /// Alchemy API Key（在 dashboard.alchemy.com 创建应用获取，用于 Token/NFT 数据）
+  final String? alchemyApiKey;
 
   const EnvConfig({
     required this.wsUrl,
@@ -37,32 +39,43 @@ class EnvConfig {
     required this.agreeUrl,
     required this.privacyUrl,
     this.isDebug = true,
+    this.alchemyApiKey,
   });
 
-  static const EnvConfig dev = EnvConfig(
-    // wsUrl: 'ws://192.168.1.103:8899/ws',
+  /// Alchemy API Key：未传时用下面默认值（仅本地跑通用；正式环境建议改为 defaultValue: '' 并用 --dart-define 传入）
+  static String? get _alchemyKey {
+    const key = String.fromEnvironment(
+      'ALCHEMY_API_KEY',
+      defaultValue: '6wP4M25wCt5N6wUI3QkIA',
+    );
+    return key.isEmpty ? null : key;
+  }
+
+  static EnvConfig get dev => EnvConfig(
     wsUrl: 'ws://129.211.215.59:8899/ws',
-    // reqUrl: 'http://192.168.1.103:8860',
     reqUrl: 'http://129.211.215.59:8860',
     agreeUrl: 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1',
     privacyUrl: 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1',
     isDebug: true,
+    alchemyApiKey: _alchemyKey,
   );
 
-  static const EnvConfig staging = EnvConfig(
+  static EnvConfig get staging => EnvConfig(
     wsUrl: 'ws://129.211.215.59:8899/ws',
     reqUrl: 'http://129.211.215.59:8860',
     agreeUrl: 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1',
     privacyUrl: 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1',
     isDebug: true,
+    alchemyApiKey: _alchemyKey,
   );
 
-  static const EnvConfig prod = EnvConfig(
+  static EnvConfig get prod => EnvConfig(
     wsUrl: 'ws://129.211.215.59:8899/ws',
     reqUrl: 'http://129.211.215.59:8860',
     agreeUrl: 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1',
     privacyUrl: 'https://uat-dev.fadada.com/api-doc/4GSRGR45LY/WEOBQWTXXXMJPCPW/5-1',
     isDebug: false,
+    alchemyApiKey: _alchemyKey,
   );
 }
 

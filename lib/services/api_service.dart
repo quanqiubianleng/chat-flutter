@@ -172,7 +172,7 @@ class ApiClient {
     final data = resp.data;
     AppLogger.d("getDataOrThrow");
     AppLogger.d(resp);
-    if (data == null) return data;
+    if (data == null) throw ApiException('无响应数据');
     if (data is! Map<String, dynamic>) throw ApiException('响应格式错误');
     if (data['_error'] == true) {
       final msg = data['_errorMsg']?.toString()?.trim();

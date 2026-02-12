@@ -251,8 +251,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
           const SizedBox(height: 20),
 
-          // 资产模块
-          AssetGrid(),
+          // 资产模块（Token/NFT 使用 Alchemy，需传入钱包地址）
+          AssetGrid(walletAddress: currentUser.walletAddress),
           const SizedBox(height: 20),
 
           // 实验室模块

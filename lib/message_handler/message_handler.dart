@@ -55,6 +55,7 @@ class MessageHandler {
       WSEventType.redPacket,
       WSEventType.withdraw,
       WSEventType.transfer,
+      WSEventType.dynamicShare,
 
       // 系统消息
       WSEventType.follow,

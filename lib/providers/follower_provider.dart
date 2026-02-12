@@ -85,6 +85,22 @@ final followerMeProvider = StreamProvider<List<Follower>>((ref) {
   );
 });
 
+/// 实时监听「关注我」且未读的列表（新增关注页与角标同一数据源）
+final unreadFollowersProvider = StreamProvider<List<Follower>>((ref) {
+  final userIdAsync = ref.watch(userProvider);
+  return userIdAsync.when(
+    loading: () => Stream.value([]),
+    error: (_, __) => Stream.value([]),
+    data: (userId) {
+      if (userId == null) return Stream.value([]);
+      final repo = ref.read(followerRepositoryProvider);
+      return DbNotification()
+          .followerStream
+          .startWith(null)
+          .asyncMap((_) => repo.getUnreadFollowers(userId));
+    },
+  );
+});
 
 // 我关注
 final iFollowCountsProvider = Provider<int>((ref) {

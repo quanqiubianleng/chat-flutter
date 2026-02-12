@@ -104,17 +104,14 @@ class ChatMediaUploader {
           },
         );
 
-        // 获取长效签名 URL（聊天记录建议 7~30 天）
-        final String signedUrl = await OssUploader().getSignedUrl(
-          objectKey: objectKey,
-          expires: const Duration(days: 7),
-        );
+        // 使用公开 URL（需 Bucket 已设为公共读，长期有效）
+        final String publicUrl = OssUploader().getPublicUrl(objectKey);
 
-        uploadedUrls.add(signedUrl);
-        print('上传成功 [$folder]: $signedUrl');
+        uploadedUrls.add(publicUrl);
+        print('上传成功 [$folder]: $publicUrl');
 
         // 实时回调（推荐！可以立刻发送消息）
-        onSingleUploaded?.call(signedUrl, folder.split('/').first); // 如 "images", "videos", "voices"
+        onSingleUploaded?.call(publicUrl, folder.split('/').first); // 如 "images", "videos", "voices"
 
       } catch (e) {
         print('上传失败 $localPath: $e');

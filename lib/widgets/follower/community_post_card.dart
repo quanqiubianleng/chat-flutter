@@ -144,9 +144,22 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
                         ],
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        _timeAgo(p.createdAt),
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                      Row(
+                        children: [
+                          Text(
+                            _timeAgo(p.createdAt),
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                          ),
+                          if (p.type == 'forward' || p.parentPostId > 0) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.repeat, size: 12, color: Colors.grey[500]),
+                            const SizedBox(width: 2),
+                            Text(
+                              '转发',
+                              style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),

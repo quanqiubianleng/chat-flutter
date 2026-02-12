@@ -54,6 +54,17 @@ class MessageRepository {
     );
   }
 
+  /// 按 client_msg_id 更新消息状态（用于乐观发送失败时）
+  Future<void> updateMessageStatusByClientMsgId(String clientMsgId, String newStatus) async {
+    if (clientMsgId.isEmpty) return;
+    await db.update(
+      'messages',
+      {'status': newStatus},
+      where: 'client_msg_id = ?',
+      whereArgs: [clientMsgId],
+    );
+  }
+
   /// 更新消息状态（服务端回包把 client_msg_id 换成 msg_id 时）
   Future<void> updateMessageByClientMsgId(pb.Event message) async {
     if (message.clientMsgId.isEmpty) return;

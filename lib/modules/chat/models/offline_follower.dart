@@ -20,8 +20,9 @@ Future<void> getOfflineFollowerList([int? userId]) async {
     final resp = await api.getFollowerData({});
     final rawFollower = resp['follower'] as List<dynamic>? ?? [];
     final rawFollowers = resp['followers'] as List<dynamic>? ?? [];
+    // 服务端「我关注的」返回的是 (fromUserId=被关注的人, toUserId=我)，本地约定是 (from=我, to=对方)，需互换
     final following = rawFollower
-        .map((e) => _followerInfoToFollower(e as Map<String, dynamic>))
+        .map((e) => _followerInfoToFollowing(e as Map<String, dynamic>, curUserId))
         .toList();
     final followers = rawFollowers
         .map((e) => _followerInfoToFollower(e as Map<String, dynamic>))
@@ -39,9 +40,31 @@ Future<void> getOfflineFollowerList([int? userId]) async {
   }
 }
 
-/// 将 getFollowerData 返回的 FollowerInfo 转成本地 Follower（支持 camelCase / snake_case）。
+int _int(dynamic v) => (v is num) ? v.toInt() : 0;
+
+/// 服务端「我关注的」每条为 (fromUserId=被关注的人, toUserId=我)，转为本地 (from=我, to=对方)。
+Follower _followerInfoToFollowing(Map<String, dynamic> item, int myUserId) {
+  final otherId = _int(item['fromUserId'] ?? item['from_user_id']);
+  final name = item['name'] as String?;
+  final avatarUrl = item['avatarUrl'] as String? ?? item['avatar_url'] as String?;
+  final remark = item['remark'] as String?;
+  final address = item['address'] as String?;
+  final createdAt = _int(item['createdAt'] ?? item['created_at']);
+  final createdAtMs = createdAt > 0 ? createdAt : DateTime.now().millisecondsSinceEpoch;
+  return Follower(
+    fromUserId: myUserId,
+    toUserId: otherId,
+    name: name,
+    avatarUrl: avatarUrl,
+    remark: remark,
+    address: address,
+    isRead: 0,
+    createdAt: createdAtMs,
+  );
+}
+
+/// 将 getFollowerData 返回的「关注我的」FollowerInfo 转成本地 Follower（from=对方, to=我，与本地一致）。
 Follower _followerInfoToFollower(Map<String, dynamic> item) {
-  int _int(dynamic v) => (v is num) ? v.toInt() : 0;
   final fromUserId = _int(item['fromUserId'] ?? item['from_user_id']);
   final toUserId = _int(item['toUserId'] ?? item['to_user_id']);
   final name = item['name'] as String?;

@@ -91,6 +91,45 @@ class WalletRepository {
     AppLogger.d('WalletRepository: 已保存加密助记词 did=$didId');
   }
 
+  /// 保存加密私钥（导入私钥成功后调用，仅 EVM 链；encrypted_mnemonic 存空字符串）
+  Future<void> saveEncryptedPrivateKey({
+    required int userId,
+    required String didId,
+    required String walletAddress,
+    required String privateKey,
+    required String password,
+    String? deviceNo,
+  }) async {
+    final random = Random.secure();
+    final secureSalt = Uint8List(16);
+    final secureIv = Uint8List(16);
+    for (int i = 0; i < 16; i++) {
+      secureSalt[i] = random.nextInt(256);
+      secureIv[i] = random.nextInt(256);
+    }
+    final key = await _deriveKey(password, secureSalt);
+    final encryptedPk = _encryptAes(privateKey, key, secureIv);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.insert(
+      'wallet_keystore',
+      {
+        'user_id': userId,
+        'did_id': didId,
+        'wallet_address': walletAddress,
+        'encrypted_mnemonic': '',
+        'encrypted_private_key': encryptedPk,
+        'salt': base64Encode(secureSalt),
+        'iv': base64Encode(secureIv),
+        'device_no': deviceNo,
+        'plain_password': password,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    AppLogger.d('WalletRepository: 已保存加密私钥 did=$didId');
+  }
+
   /// 获取指定 did 的 plain_password（用于重置密码时传入正确的旧密码）
   Future<String?> getStoredPasswordForDid(String didId) async {
     final rows = await db.query(
@@ -129,9 +168,10 @@ class WalletRepository {
     if (rows.isEmpty) return null;
 
     final row = rows.first;
+    final encrypted = row['encrypted_mnemonic'] as String? ?? '';
+    if (encrypted.isEmpty) return null; // 私钥导入账号无助记词
     final salt = base64Decode(row['salt'] as String);
     final iv = base64Decode(row['iv'] as String);
-    final encrypted = row['encrypted_mnemonic'] as String;
 
     try {
       final key = await _deriveKey(password, Uint8List.fromList(salt));
@@ -142,12 +182,43 @@ class WalletRepository {
     }
   }
 
-  /// 根据 didId 导出私钥（需验证密码，从助记词派生，与后端 BIP44 路径一致）
+  /// 统一为以太坊/BNB 等 EVM 链标准格式：0x + 64 位十六进制
+  static String? _toStandardEvmPrivateKey(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    String hex = raw.replaceAll(RegExp(r'\s+'), '').trim();
+    if (hex.toLowerCase().startsWith('0x')) hex = hex.substring(2);
+    if (hex.length != 64) return null;
+    if (!RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex)) return null;
+    return '0x$hex';
+  }
+
+  /// 根据 didId 导出私钥（需验证密码；若为私钥导入则直接解密返回，否则从助记词派生）
+  /// 返回格式统一为以太坊/BNB 标准：0x + 64 位十六进制
   Future<String?> exportPrivateKey(String didId, String password) async {
+    final rows = await db.query(
+      'wallet_keystore',
+      where: 'did_id = ?',
+      whereArgs: [didId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    final encPk = row['encrypted_private_key'] as String?;
+    if (encPk != null && encPk.isNotEmpty) {
+      final salt = base64Decode(row['salt'] as String);
+      final iv = base64Decode(row['iv'] as String);
+      try {
+        final key = await _deriveKey(password, Uint8List.fromList(salt));
+        final decrypted = _decryptAes(encPk, key, Uint8List.fromList(iv));
+        return _toStandardEvmPrivateKey(decrypted);
+      } catch (e) {
+        AppLogger.e('WalletRepository exportPrivateKey 解密失败', e, null);
+        return null;
+      }
+    }
     final mnemonic = await exportMnemonic(didId, password);
     if (mnemonic == null || mnemonic.isEmpty) return null;
-    // 从助记词派生 ETH 私钥（m/44'/60'/0'/0/0）
-    return MnemonicDerive.deriveEthPrivateKey(mnemonic);
+    return _toStandardEvmPrivateKey(MnemonicDerive.deriveEthPrivateKey(mnemonic));
   }
 
   /// 导出 ETH 和 TRX 私钥
@@ -193,34 +264,49 @@ class WalletRepository {
     for (final row in rows) {
       final didId = row['did_id'] as String;
       final mnemonic = await exportMnemonic(didId, oldPassword);
-      if (mnemonic == null || mnemonic.isEmpty) {
-        AppLogger.e('WalletRepository updateAllPasswords: did=$didId 解密失败，旧密码可能错误', null, null);
-        return false;
+      if (mnemonic != null && mnemonic.isNotEmpty) {
+        toUpdate.add({'row': row, 'kind': 'mnemonic', 'secret': mnemonic});
+        continue;
       }
-      toUpdate.add({
-        'row': row,
-        'mnemonic': mnemonic,
-      });
+      final privateKey = await exportPrivateKey(didId, oldPassword);
+      if (privateKey != null && privateKey.isNotEmpty) {
+        toUpdate.add({'row': row, 'kind': 'private_key', 'secret': privateKey});
+        continue;
+      }
+      AppLogger.e('WalletRepository updateAllPasswords: did=$didId 解密失败，旧密码可能错误', null, null);
+      return false;
     }
 
     for (final item in toUpdate) {
       final row = item['row'] as Map<String, dynamic>;
-      final mnemonic = item['mnemonic'] as String;
+      final kind = item['kind'] as String;
+      final secret = item['secret'] as String;
       final didId = row['did_id'] as String;
       final userId = row['user_id'] as int;
       final walletAddress = row['wallet_address'] as String;
       final deviceNo = row['device_no'] as String?;
 
-      await saveEncryptedMnemonic(
-        userId: userId,
-        didId: didId,
-        walletAddress: walletAddress,
-        mnemonic: mnemonic,
-        password: newPassword,
-        deviceNo: deviceNo,
-      );
+      if (kind == 'mnemonic') {
+        await saveEncryptedMnemonic(
+          userId: userId,
+          didId: didId,
+          walletAddress: walletAddress,
+          mnemonic: secret,
+          password: newPassword,
+          deviceNo: deviceNo,
+        );
+      } else {
+        await saveEncryptedPrivateKey(
+          userId: userId,
+          didId: didId,
+          walletAddress: walletAddress,
+          privateKey: secret,
+          password: newPassword,
+          deviceNo: deviceNo,
+        );
+      }
     }
-    AppLogger.d('WalletRepository: 已更新所有助记词密码及 plain_password');
+    AppLogger.d('WalletRepository: 已更新所有助记词/私钥密码及 plain_password');
     return true;
   }
 }

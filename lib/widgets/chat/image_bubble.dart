@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:education/core/utils/oss_url_helper.dart';
+import 'package:education/widgets/common/oss_refreshable_image.dart';
 
 class ImageBubble extends StatelessWidget {
   final String url;
@@ -23,42 +25,58 @@ class ImageBubble extends StatelessWidget {
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: CachedNetworkImage(
-          imageUrl: url,
-          // 限制最大宽度，高度自适应
-          width: maxWidth,
-          // 高度不固定，让图片按比例缩放
-          height: null,
-          fit: BoxFit.cover,
-          // 占位图
-          placeholder: (context, url) => Container(
-            width: maxWidth,
-            height: maxWidth * 0.75, // 占位图比例，防止布局跳动
-            color: Colors.grey[300],
-            child: const Center(child: CircularProgressIndicator()),
-          ),
-          // 错误时显示
-          errorWidget: (context, url, error) => Container(
-            width: maxWidth,
-            height: maxWidth * 0.75,
-            color: Colors.grey[400],
-            child: const Icon(Icons.broken_image, color: Colors.white),
-          ),
-          // 图片加载完成后，保持原始比例
-          imageBuilder: (context, imageProvider) {
-            return Container(
-              constraints: BoxConstraints(
-                maxWidth: maxWidth,
-                // 限制最大高度，防止图片过大撑破屏幕
-                maxHeight: 400,
+        child: OssUrlHelper.isOssSignedUrl(url)
+            ? OssRefreshableImage(
+                url: url,
+                width: maxWidth,
+                height: maxWidth * 0.75,
+                fit: BoxFit.cover,
+                loadingBuilder: (_, child, progress) {
+                  if (progress == null) return child;
+                  return Container(
+                    width: maxWidth,
+                    height: maxWidth * 0.75,
+                    color: Colors.grey[300],
+                    child: const Center(child: CircularProgressIndicator()),
+                  );
+                },
+                errorBuilder: (_, __, ___) => Container(
+                  width: maxWidth,
+                  height: maxWidth * 0.75,
+                  color: Colors.grey[400],
+                  child: const Icon(Icons.broken_image, color: Colors.white),
+                ),
+              )
+            : CachedNetworkImage(
+                imageUrl: url,
+                width: maxWidth,
+                height: null,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => Container(
+                  width: maxWidth,
+                  height: maxWidth * 0.75,
+                  color: Colors.grey[300],
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
+                errorWidget: (context, url, error) => Container(
+                  width: maxWidth,
+                  height: maxWidth * 0.75,
+                  color: Colors.grey[400],
+                  child: const Icon(Icons.broken_image, color: Colors.white),
+                ),
+                imageBuilder: (context, imageProvider) {
+                  return Container(
+                    constraints: const BoxConstraints(
+                      maxWidth: maxWidth,
+                      maxHeight: 400,
+                    ),
+                    child: Image(
+                      image: imageProvider,
+                      fit: BoxFit.contain,
+                    ),
+                  );
+                },
               ),
-              child: Image(
-                image: imageProvider,
-                fit: BoxFit.contain, // 保持比例，不裁剪
-              ),
-            );
-          },
-        ),
       ),
     );
   }

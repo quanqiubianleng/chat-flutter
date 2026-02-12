@@ -3,9 +3,15 @@ import 'package:education/services/api_service.dart';
 class UserApi {
   final ApiClient _client = ApiClient();
 
-  /// 导入钱包
+  /// 导入钱包（助记词）
   Future<Map<String, dynamic>> importWallet(Map<String, dynamic> data) async {
     final resp = await _client.post("/v1/wallet/import", data: data);
+    return ApiClient.getDataOrThrow(resp);
+  }
+
+  /// 导入私钥（EVM 链）
+  Future<Map<String, dynamic>> importWalletByPrivateKey(Map<String, dynamic> data) async {
+    final resp = await _client.post("/v1/wallet/importPrivateKey", data: data);
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -51,6 +57,12 @@ class UserApi {
     return ApiClient.getDataOrThrow(resp);
   }
 
+  /// 转账选择联系人：当前设备用户 + 我关注的人（带关系标签）
+  Future<Map<String, dynamic>> getTransferContactList(Map<String, dynamic> data) async {
+    final resp = await _client.post("/v1/users/getTransferContactList", data: data);
+    return ApiClient.getDataOrThrow(resp);
+  }
+
   /// 切换账号
   Future<Map<String, dynamic>> changeAccount(Map<String, dynamic> data) async {
     final resp = await _client.post("/v1/users/changeAccount", data: data);
@@ -66,6 +78,12 @@ class UserApi {
   /// 同步关注数据
   Future<Map<String, dynamic>> getFollowerData(Map<String, dynamic> data) async {
     final resp = await _client.post("/v1/users/getFollowerData", data: data);
+    return ApiClient.getDataOrThrow(resp);
+  }
+
+  /// 标记「关注我的」为已读（查看新增关注页后调用，同步服务端未读状态）
+  Future<Map<String, dynamic>> markFollowRead() async {
+    final resp = await _client.post("/v1/users/markFollowRead", data: <String, dynamic>{});
     return ApiClient.getDataOrThrow(resp);
   }
 

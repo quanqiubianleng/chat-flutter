@@ -10,6 +10,8 @@ import 'package:education/widgets/chat/avatar.dart';
 import 'package:education/widgets/follower/community_post_card.dart';
 import 'package:education/widgets/follower/debox_floating_menu.dart';
 import 'package:education/widgets/follower/post_more_menu_sheet.dart';
+import 'package:education/widgets/common/empty_state_view.dart';
+import 'package:education/widgets/common/share_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -194,8 +196,17 @@ class _FollowTabState extends ConsumerState<FollowTab> {
   }
 
   void _onShare(PostInfo post) {
-    // TODO: 分享到社交平台
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享功能')));
+    showDynamicShareSheet(
+      context: context,
+      post: post,
+      onShared: () {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已分享到聊天')),
+          );
+        }
+      },
+    );
   }
 
   Future<void> _onPin(PostInfo post) async {
@@ -354,12 +365,7 @@ class _FollowTabState extends ConsumerState<FollowTab> {
           if (_posts.isEmpty)
             SizedBox(
               height: MediaQuery.of(context).size.height * 0.5,
-              child: Center(
-                child: Text(
-                  '暂无数据',
-                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                ),
-              ),
+              child: const EmptyStateView(),
             )
           else
             ..._posts.map((p) => _FeedPostItem(

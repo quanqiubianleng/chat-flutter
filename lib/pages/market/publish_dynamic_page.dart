@@ -5,6 +5,7 @@ import 'package:education/core/utils/logger.dart';
 import 'package:education/modules/dynamic/models/post_info.dart';
 import 'package:education/services/dynamic_service.dart';
 import 'package:education/services/user_service.dart';
+import 'package:education/widgets/common/empty_state_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -604,7 +605,7 @@ class _MentionSheetContentState extends State<_MentionSheetContent> {
               : _error != null
                   ? Center(child: Text('加载失败: $_error', style: TextStyle(color: Colors.red[700])))
                   : _filteredList.isEmpty
-                      ? Center(child: Text('暂无关注的人', style: TextStyle(color: Colors.grey[600])))
+                      ? const EmptyStateView()
                       : ListView.separated(
                           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                           itemCount: _filteredList.length,
@@ -817,7 +818,7 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
               : _error != null
                   ? Center(child: Text('加载失败: $_error', style: TextStyle(color: Colors.red[700])))
                   : _filteredList.isEmpty
-                      ? Center(child: Text('暂无话题', style: TextStyle(color: Colors.grey[600])))
+                      ? const EmptyStateView()
                       : ListView.builder(
                           itemCount: _filteredList.length,
                           itemBuilder: (_, i) {

@@ -6,6 +6,7 @@ import 'package:education/providers/user_provider.dart';
 import 'package:education/widgets/chat/avatar.dart';
 import 'package:education/widgets/chat/image_bubble.dart';
 import 'package:education/widgets/chat/invite_link_bubble.dart';
+import 'package:education/widgets/chat/dynamic_share_bubble.dart';
 import 'package:education/widgets/chat/redpacket_bubble.dart';
 import 'package:education/widgets/chat/text_bubble.dart';
 import 'package:education/widgets/chat/transfer_bubble.dart';
@@ -154,6 +155,8 @@ class MessageBubble extends ConsumerWidget {
         return TransferBubble(message: message, isMe: isMe,);
       case WSEventType.invite:
         return InviteLinkBubble(message: message);
+      case WSEventType.dynamicShare:
+        return DynamicShareBubble(message: message);
       case WSEventType.image:
         return ImageBubble(url: message.mediaUrl.isNotEmpty ? message.mediaUrl : message.content);
       case WSEventType.voice:

@@ -62,6 +62,7 @@ class WSEventType {
   static const String redPacket     = 'red_packet';     // 红包
   static const String transfer     = 'transfer';     // 转账
   static const String businessCard     = 'business_card';     // 名片
+  static const String dynamicShare     = 'dynamic_share';     // 动态分享到聊天
   static const String withdraw     = 'withdraw';     // 撤回
   static const String typing        = 'typing';         // 正在输入
 

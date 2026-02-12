@@ -44,6 +44,8 @@ class Follower {
   });
 
   factory Follower.fromMap(Map<String, dynamic> map) {
+    final rawRead = map['is_read'];
+    final rawCreated = map['created_at'];
     return Follower(
       fromUserId: map['from_user_id'] as int,
       toUserId: map['to_user_id'] as int,
@@ -51,8 +53,8 @@ class Follower {
       avatarUrl: map['avatar_url'] as String?,
       remark: map['remark'] as String?,
       address: map['address'] as String?,
-      isRead: map['is_read'] as int,
-      createdAt: map['created_at'] as int,
+      isRead: (rawRead is int) ? rawRead : ((rawRead as num?)?.toInt() ?? 0),
+      createdAt: (rawCreated is int) ? rawCreated : ((rawCreated as num?)?.toInt() ?? 0),
     );
   }
 
