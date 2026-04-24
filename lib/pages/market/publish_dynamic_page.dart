@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
+import 'package:education/config/known_tokens.dart';
 import 'package:education/core/utils/chat_media_uploader.dart';
 import 'package:education/core/utils/get_string_uuid.dart';
 import 'package:education/core/utils/logger.dart';
@@ -6,6 +9,7 @@ import 'package:education/modules/dynamic/models/post_info.dart';
 import 'package:education/services/dynamic_service.dart';
 import 'package:education/services/user_service.dart';
 import 'package:education/widgets/common/empty_state_view.dart';
+import 'package:education/widgets/common/token_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -16,7 +20,10 @@ class PublishDynamicPage extends StatefulWidget {
   /// 编辑时传入原动态
   final PostInfo? editPost;
 
-  const PublishDynamicPage({super.key, this.editPost});
+  /// 预选代币（如从 K 线页右下角 + 进入时传入当前代币）
+  final Map<String, dynamic>? initialToken;
+
+  const PublishDynamicPage({super.key, this.editPost, this.initialToken});
 
   @override
   State<PublishDynamicPage> createState() => _PublishDynamicPageState();
@@ -54,6 +61,43 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
           _mediaPaths.add(m.url);
         }
       }
+      if (edit.onChainData.isNotEmpty) {
+        try {
+          final map = jsonDecode(edit.onChainData) as Map<String, dynamic>?;
+          final token = map?['token'];
+          if (token is Map<String, dynamic> &&
+              token['symbol'] != null &&
+              token['symbol'].toString().isNotEmpty) {
+            _selectedToken = Map<String, dynamic>.from(token);
+          }
+          final topicsRaw = map?['topics'];
+          if (topicsRaw is List) {
+            for (final item in topicsRaw) {
+              if (item is Map) {
+                final topicMap = Map<String, dynamic>.from(item);
+                final name = (topicMap['name'] ?? topicMap['topic_name'] ?? '')
+                    .toString()
+                    .trim();
+                if (name.isEmpty) continue;
+                final idRaw = topicMap['id'] ?? topicMap['topic_id'] ?? 0;
+                final id = idRaw is num
+                    ? idRaw.toInt()
+                    : int.tryParse(idRaw.toString()) ?? 0;
+                _topics.add(<String, dynamic>{'id': id, 'name': name});
+              } else if (item is String) {
+                final name = item.trim();
+                if (name.isNotEmpty) {
+                  _topics.add(<String, dynamic>{'id': 0, 'name': name});
+                }
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    } else if (widget.initialToken != null &&
+        widget.initialToken!['symbol'] != null &&
+        widget.initialToken!['symbol'].toString().trim().isNotEmpty) {
+      _selectedToken = Map<String, dynamic>.from(widget.initialToken!);
     }
   }
 
@@ -93,15 +137,16 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
   Future<void> _publish() async {
     final content = _contentController.text.trim();
     if (content.isEmpty && _mediaPaths.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入描述内容或添加图片视频')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入描述内容或添加图片视频')));
       return;
     }
 
     // 组装 media_list（后端格式）
     final mediaList = _mediaPaths.map((url) {
-      final isVideo = url.toLowerCase().contains('.mp4') ||
+      final isVideo =
+          url.toLowerCase().contains('.mp4') ||
           url.toLowerCase().contains('.mov') ||
           url.toLowerCase().contains('.webm');
       return <String, dynamic>{
@@ -111,19 +156,37 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
       };
     }).toList();
 
+    final payload = <String, dynamic>{};
+    if (_selectedToken != null) {
+      payload['token'] = _selectedToken;
+    }
+    if (_topics.isNotEmpty) {
+      payload['topics'] = _topics
+          .map(
+            (t) => <String, dynamic>{
+              'id': t['id'],
+              'name': (t['name'] as String? ?? '').trim(),
+            },
+          )
+          .where((t) => (t['name'] as String).isNotEmpty)
+          .toList();
+    }
+    final onChainData = payload.isNotEmpty ? jsonEncode(payload) : '';
+
     try {
       await DynamicApi().createPost(
         content: content,
         mediaList: mediaList,
         visibility: _privateOnly ? 'private' : 'public',
+        onChainData: onChainData,
       );
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('发布失败: ${e.toString()}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('发布失败: ${e.toString()}')));
       }
     }
   }
@@ -147,19 +210,24 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
       ),
     );
     if (result != null && mounted) {
-      final prevIds = _mentions.map((m) => (m['userId'] as num?)?.toInt()).whereType<int>().toSet();
+      final prevIds = _mentions
+          .map((m) => (m['userId'] as num?)?.toInt())
+          .whereType<int>()
+          .toSet();
       setState(() {
         _mentions
           ..clear()
           ..addAll(result);
-        // 像 DeBox 动态：将 @昵称 插入到内容中
+        // 像 BBT 动态：将 @昵称 插入到内容中
         for (final m in result) {
           final uid = (m['userId'] as num?)?.toInt();
           if (uid != null && !prevIds.contains(uid)) {
             final name = m['username'] as String? ?? '用户';
             final suffix = _contentController.text.isEmpty ? '' : ' ';
             _contentController.text += '$suffix@$name';
-            _contentController.selection = TextSelection.collapsed(offset: _contentController.text.length);
+            _contentController.selection = TextSelection.collapsed(
+              offset: _contentController.text.length,
+            );
           }
         }
       });
@@ -185,19 +253,17 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
       ),
     );
     if (result != null && mounted) {
-      setState(() => _topics
-        ..clear()
-        ..addAll(result));
+      setState(
+        () => _topics
+          ..clear()
+          ..addAll(result),
+      );
     }
   }
 
-  void _showTokenPicker() {
-    _showPickerSheet('选择代币', '搜索代币名称');
-  }
-
-  void _showPickerSheet(String title, String hint) {
-    final height = MediaQuery.of(context).size.height * 0.8;
-    showModalBottomSheet(
+  void _showTokenPicker() async {
+    final height = MediaQuery.of(context).size.height * 0.7;
+    final result = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -207,14 +273,38 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         ),
-        child: _PlaceholderSheetContent(title: title, hint: hint),
+        child: _TokenSelectSheetContent(
+          initialToken: _selectedToken,
+          onSelect: (token) => Navigator.pop(context, token),
+          onCancel: () => Navigator.pop(context),
+        ),
       ),
     );
+    if (result != null && mounted) {
+      setState(() => _selectedToken = result);
+    }
   }
 
   void _showSettings() {
     FocusScope.of(context).unfocus(); // 收起键盘
     setState(() => _showSettingsSection = !_showSettingsSection);
+  }
+
+  static String _tokenChainName(dynamic chain) {
+    if (chain == null) return '';
+    final s = chain.toString();
+    switch (s) {
+      case KnownTokens.bnbMainnet:
+        return 'BNB Chain';
+      case KnownTokens.ethMainnet:
+        return 'Ethereum';
+      case KnownTokens.baseMainnet:
+        return 'Base';
+      case KnownTokens.xLayer:
+        return 'X Layer';
+      default:
+        return s;
+    }
   }
 
   bool _showSettingsSection = false;
@@ -232,13 +322,24 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
         ),
         title: Text(
           _isEdit ? '编辑动态' : '发布动态',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.black87),
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black87,
+          ),
         ),
         centerTitle: true,
         actions: [
           TextButton(
             onPressed: _publish,
-            child: Text(_isEdit ? '保存' : '发布', style: const TextStyle(fontSize: 16, color: Color(0xFF00D1A7), fontWeight: FontWeight.w500)),
+            child: Text(
+              _isEdit ? '保存' : '发布',
+              style: const TextStyle(
+                fontSize: 16,
+                color: Color(0xFF00D1A7),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ],
       ),
@@ -260,12 +361,18 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
                       maxLines: null,
                       maxLength: _maxContentLength,
                       inputFormatters: [
-                        _MentionDeleteFormatter(onMentionDeleted: (deleted) {
-                          final name = deleted.startsWith('@') ? deleted.substring(1) : deleted;
-                          setState(() {
-                            _mentions.removeWhere((m) => (m['username'] as String? ?? '') == name);
-                          });
-                        }),
+                        _MentionDeleteFormatter(
+                          onMentionDeleted: (deleted) {
+                            final name = deleted.startsWith('@')
+                                ? deleted.substring(1)
+                                : deleted;
+                            setState(() {
+                              _mentions.removeWhere(
+                                (m) => (m['username'] as String? ?? '') == name,
+                              );
+                            });
+                          },
+                        ),
                       ],
                       decoration: const InputDecoration(
                         hintText: '请输入描述内容',
@@ -292,12 +399,53 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
                         children: _topics.map((t) {
                           final name = t['name'] as String? ?? '话题';
                           return Chip(
-                            label: Text('#$name', style: const TextStyle(fontSize: 13)),
+                            label: Text(
+                              '#$name',
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             deleteIcon: const Icon(Icons.close, size: 16),
                             onDeleted: () => setState(() => _topics.remove(t)),
-                            backgroundColor: const Color(0xFF00D1A7).withOpacity(0.2),
+                            backgroundColor: const Color(
+                              0xFF00D1A7,
+                            ).withOpacity(0.2),
                           );
                         }).toList(),
+                      ),
+                    ],
+                    if (_selectedToken != null) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          Chip(
+                            avatar: CircleAvatar(
+                              backgroundColor: Colors.grey.shade300,
+                              child: Text(
+                                (_selectedToken!['symbol'] as String? ?? '?')
+                                            .length >=
+                                        1
+                                    ? (_selectedToken!['symbol'] as String)
+                                          .substring(0, 1)
+                                    : '?',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            label: Text(
+                              '${_selectedToken!['symbol']} · ${_tokenChainName(_selectedToken!['chain'])}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            deleteIcon: const Icon(Icons.close, size: 16),
+                            onDeleted: () =>
+                                setState(() => _selectedToken = null),
+                            backgroundColor: const Color(
+                              0xFF00D1A7,
+                            ).withOpacity(0.2),
+                          ),
+                        ],
                       ),
                     ],
                     if (_mediaPaths.isNotEmpty) ...[
@@ -318,12 +466,20 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
                                       ? Image.network(
                                           path,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
-                                            color: Colors.grey[300],
-                                            child: Icon(Icons.play_circle_outline, size: 32, color: Colors.grey[600]),
-                                          ),
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                                color: Colors.grey[300],
+                                                child: Icon(
+                                                  Icons.play_circle_outline,
+                                                  size: 32,
+                                                  color: Colors.grey[600],
+                                                ),
+                                              ),
                                         )
-                                      : Image.file(File(path), fit: BoxFit.cover),
+                                      : Image.file(
+                                          File(path),
+                                          fit: BoxFit.cover,
+                                        ),
                                 ),
                               ),
                               Positioned(
@@ -337,7 +493,11 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
                                       color: Colors.black54,
                                       shape: BoxShape.circle,
                                     ),
-                                    child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                    child: const Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -354,20 +514,41 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
             // 底部操作栏（固定在底部，键盘弹出时在其上方）
             Container(
               color: Colors.white,
-              padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                12 + MediaQuery.of(context).padding.bottom,
+              ),
               child: SafeArea(
                 top: false,
                 child: Row(
                   children: [
-                    _bottomBarItem(Icons.photo_library_outlined, '选择图片视频', _pickMedia),
+                    _bottomBarItem(
+                      Icons.photo_library_outlined,
+                      '选择图片视频',
+                      _pickMedia,
+                    ),
                     const SizedBox(width: 8),
-                    _bottomBarItem(Icons.alternate_email, '提醒谁看', _showMentionPicker),
+                    _bottomBarItem(
+                      Icons.alternate_email,
+                      '提醒谁看',
+                      _showMentionPicker,
+                    ),
                     const SizedBox(width: 8),
                     _bottomBarItem(Icons.tag, '话题', _showTopicPicker),
                     const SizedBox(width: 8),
-                    _bottomBarItem(Icons.currency_bitcoin, '虚拟币', _showTokenPicker),
+                    _bottomBarItem(
+                      Icons.currency_bitcoin,
+                      '虚拟币',
+                      _showTokenPicker,
+                    ),
                     const SizedBox(width: 8),
-                    _bottomBarItem(Icons.settings_outlined, '设置', _showSettings),
+                    _bottomBarItem(
+                      Icons.settings_outlined,
+                      '设置',
+                      _showSettings,
+                    ),
                   ],
                 ),
               ),
@@ -381,7 +562,12 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
                   ? Container(
                       width: double.infinity,
                       color: Colors.white,
-                      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.of(context).padding.bottom),
+                      padding: EdgeInsets.fromLTRB(
+                        20,
+                        16,
+                        20,
+                        16 + MediaQuery.of(context).padding.bottom,
+                      ),
                       child: SafeArea(
                         top: false,
                         child: Column(
@@ -426,16 +612,30 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
     );
   }
 
-  Widget _buildSettingRow(String title, String subtitle, bool value, ValueChanged<bool> onChanged) {
+  Widget _buildSettingRow(
+    String title,
+    String subtitle,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
     return Row(
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(subtitle, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              ),
             ],
           ),
         ),
@@ -449,7 +649,7 @@ class _PublishDynamicPageState extends State<PublishDynamicPage> {
   }
 }
 
-/// 退格时整段删除 @昵称（如 DeBox 动态）
+/// 退格时整段删除 @昵称（如 BBT 动态）
 class _MentionDeleteFormatter extends TextInputFormatter {
   final void Function(String deletedMention)? onMentionDeleted;
 
@@ -471,7 +671,9 @@ class _MentionDeleteFormatter extends TextInputFormatter {
     if (match != null) {
       final deleted = match.group(0)!;
       onMentionDeleted?.call(deleted);
-      final newText = oldValue.text.substring(0, match.start) + oldValue.text.substring(cursor);
+      final newText =
+          oldValue.text.substring(0, match.start) +
+          oldValue.text.substring(cursor);
       return TextEditingValue(
         text: newText,
         selection: TextSelection.collapsed(offset: match.start),
@@ -538,7 +740,7 @@ class _MentionSheetContentState extends State<_MentionSheetContent> {
           'wallet_address': m['wallet_address'] ?? m['address'] ?? '',
         };
       }).toList();
-      if (mounted) {  
+      if (mounted) {
         setState(() {
           _list = list;
           _loading = false;
@@ -572,9 +774,15 @@ class _MentionSheetContentState extends State<_MentionSheetContent> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           child: Row(
             children: [
-              const Text('提醒谁看', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const Text(
+                '提醒谁看',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
               const Spacer(),
-              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
             ],
           ),
         ),
@@ -603,84 +811,110 @@ class _MentionSheetContentState extends State<_MentionSheetContent> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-                  ? Center(child: Text('加载失败: $_error', style: TextStyle(color: Colors.red[700])))
-                  : _filteredList.isEmpty
-                      ? const EmptyStateView()
-                      : ListView.separated(
-                          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                          itemCount: _filteredList.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1, thickness: 0.5),
-                          itemBuilder: (_, i) {
-                            final m = _filteredList[i];
-                            final userId = (m['userId'] as num?)?.toInt() ?? 0;
-                            final name = m['username'] as String? ?? '匿名';
-                            final avatar = m['avatar_url'] as String? ?? '';
-                            final addr = m['wallet_address'] as String? ?? '';
-                            final checked = _selectedIds.contains(userId);
-                            return InkWell(
-                              onTap: () {
-                                setState(() {
-                                  if (checked) {
-                                    _selectedIds.remove(userId);
-                                  } else {
-                                    _selectedIds.add(userId);
-                                  }
-                                });
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                child: Row(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: avatar.isNotEmpty
-                                          ? Image.network(
-                                              avatar,
-                                              width: 48,
-                                              height: 48,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) => _buildAvatarPlaceholder(),
-                                            )
-                                          : _buildAvatarPlaceholder(),
+              ? Center(
+                  child: Text(
+                    '加载失败: $_error',
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                )
+              : _filteredList.isEmpty
+              ? const EmptyStateView()
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 10,
+                  ),
+                  itemCount: _filteredList.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, thickness: 0.5),
+                  itemBuilder: (_, i) {
+                    final m = _filteredList[i];
+                    final userId = (m['userId'] as num?)?.toInt() ?? 0;
+                    final name = m['username'] as String? ?? '匿名';
+                    final avatar = m['avatar_url'] as String? ?? '';
+                    final addr = m['wallet_address'] as String? ?? '';
+                    final checked = _selectedIds.contains(userId);
+                    return InkWell(
+                      onTap: () {
+                        setState(() {
+                          if (checked) {
+                            _selectedIds.remove(userId);
+                          } else {
+                            _selectedIds.add(userId);
+                          }
+                        });
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: avatar.isNotEmpty
+                                  ? Image.network(
+                                      avatar,
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          _buildAvatarPlaceholder(),
+                                    )
+                                  : _buildAvatarPlaceholder(),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            name,
-                                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                                          ),
-                                          if (addr.isNotEmpty) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              truncateString(addr),
-                                              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                                            ),
-                                          ],
-                                        ],
+                                  ),
+                                  if (addr.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      truncateString(addr),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey[600],
                                       ),
-                                    ),
-                                    Container(
-                                      width: 20,
-                                      height: 20,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: checked ? const Color(0xFF00D29D) : Colors.transparent,
-                                        border: Border.all(
-                                          color: checked ? const Color(0xFF00D29D) : Colors.grey[400]!,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: checked ? const Icon(Icons.check, size: 14, color: Colors.white) : null,
                                     ),
                                   ],
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: checked
+                                    ? const Color(0xFF00D29D)
+                                    : Colors.transparent,
+                                border: Border.all(
+                                  color: checked
+                                      ? const Color(0xFF00D29D)
+                                      : Colors.grey[400]!,
+                                  width: 2,
                                 ),
                               ),
-                            );
-                          },
+                              child: checked
+                                  ? const Icon(
+                                      Icons.check,
+                                      size: 14,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                            ),
+                          ],
                         ),
+                      ),
+                    );
+                  },
+                ),
         ),
         Padding(
           padding: const EdgeInsets.all(16),
@@ -688,10 +922,14 @@ class _MentionSheetContentState extends State<_MentionSheetContent> {
             width: double.infinity,
             child: FilledButton(
               onPressed: () {
-                final selected = _list.where((m) => _selectedIds.contains(m['userId'])).toList();
+                final selected = _list
+                    .where((m) => _selectedIds.contains(m['userId']))
+                    .toList();
                 widget.onConfirm(selected);
               },
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00D1A7)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00D1A7),
+              ),
               child: const Text('完成'),
             ),
           ),
@@ -701,11 +939,11 @@ class _MentionSheetContentState extends State<_MentionSheetContent> {
   }
 
   Widget _buildAvatarPlaceholder() => Container(
-        width: 48,
-        height: 48,
-        color: Colors.grey[300],
-        child: const Icon(Icons.person, color: Colors.white, size: 28),
-      );
+    width: 48,
+    height: 48,
+    color: Colors.grey[300],
+    child: const Icon(Icons.person, color: Colors.white, size: 28),
+  );
 }
 
 /// 话题选择弹窗
@@ -728,6 +966,7 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
   bool _loading = true;
   String? _error;
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -741,6 +980,7 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -752,14 +992,22 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
     });
     try {
       final resp = await DynamicApi().getTopicList(keyword: keyword);
-      final raw = resp['data'] as List<dynamic>? ?? [];
-      final list = raw.map((e) {
-        final m = e as Map<String, dynamic>;
-        return {
-          'id': m['id'] ?? m['topic_id'] ?? 0,
-          'name': m['name'] ?? m['topic_name'] ?? '',
-        };
+      final dynamic raw =
+          resp['data'] ?? resp['list'] ?? resp['items'] ?? resp['topics'] ?? [];
+      final List<dynamic> rawList = raw is List<dynamic> ? raw : const [];
+      final list = rawList.map((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        final dynamic idRaw = m['id'] ?? m['topic_id'] ?? m['topicId'] ?? 0;
+        final int id = idRaw is num
+            ? idRaw.toInt()
+            : int.tryParse(idRaw.toString()) ?? 0;
+        final String name =
+            (m['name'] ?? m['topic_name'] ?? m['topicName'] ?? '')
+                .toString()
+                .trim();
+        return <String, dynamic>{'id': id, 'name': name};
       }).toList();
+      list.removeWhere((item) => (item['name'] as String?)?.isEmpty ?? true);
       if (mounted) {
         setState(() {
           _list = list;
@@ -768,12 +1016,39 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
       }
     } catch (e) {
       if (mounted) {
+        final fallback = _fallbackTopicList(keyword: keyword);
         setState(() {
+          _list = fallback;
           _loading = false;
-          _error = e.toString();
+          // 接口失败时仍允许选择热门话题/创建新话题，避免发布流程被阻断
+          _error = null;
         });
       }
     }
+  }
+
+  List<Map<String, dynamic>> _fallbackTopicList({String? keyword}) {
+    const base = <String>[
+      'BTC',
+      'ETH',
+      'USDT',
+      'Web3',
+      'DeFi',
+      'NFT',
+      'Meme',
+      'Airdrop',
+      'GameFi',
+      'Layer2',
+      'DAO',
+    ];
+    final kw = (keyword ?? '').trim().toLowerCase();
+    final names = kw.isEmpty
+        ? base
+        : base.where((n) => n.toLowerCase().contains(kw)).toList();
+    return List<Map<String, dynamic>>.generate(
+      names.length,
+      (i) => <String, dynamic>{'id': -(i + 1), 'name': names[i]},
+    );
   }
 
   List<Map<String, dynamic>> get _filteredList {
@@ -793,9 +1068,15 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           child: Row(
             children: [
-              const Text('选择话题', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const Text(
+                '选择话题',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
               const Spacer(),
-              IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
             ],
           ),
         ),
@@ -803,11 +1084,18 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: TextField(
             controller: _searchController,
-            onChanged: (_) => setState(() {}),
+            onChanged: (value) {
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                _load(keyword: value.trim());
+              });
+            },
             decoration: InputDecoration(
               hintText: '搜索话题',
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
@@ -816,43 +1104,91 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-                  ? Center(child: Text('加载失败: $_error', style: TextStyle(color: Colors.red[700])))
-                  : _filteredList.isEmpty
-                      ? const EmptyStateView()
-                      : ListView.builder(
-                          itemCount: _filteredList.length,
-                          itemBuilder: (_, i) {
-                            final m = _filteredList[i];
-                            final id = m['id'] as int? ?? 0;
-                            final name = m['name'] as String? ?? '';
-                            final checked = _selectedIds.contains(id);
-                            return ListTile(
-                              title: Text(name.isEmpty ? '话题$id' : name),
-                              trailing: Checkbox(
-                                value: checked,
-                                onChanged: (_) {
-                                  setState(() {
-                                    if (checked) {
-                                      _selectedIds.remove(id);
-                                    } else {
-                                      _selectedIds.add(id);
-                                    }
-                                  });
-                                },
-                                activeColor: const Color(0xFF00D1A7),
-                              ),
-                              onTap: () {
-                                setState(() {
-                                  if (checked) {
-                                    _selectedIds.remove(id);
-                                  } else {
-                                    _selectedIds.add(id);
-                                  }
-                                });
-                              },
-                            );
-                          },
+              ? Center(
+                  child: Text(
+                    '加载失败: $_error',
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                )
+              : (_filteredList.isEmpty && _searchController.text.trim().isEmpty)
+              ? const EmptyStateView()
+              : ListView.builder(
+                  itemCount:
+                      _filteredList.length +
+                      ((_filteredList.isEmpty &&
+                              _searchController.text.trim().isNotEmpty)
+                          ? 1
+                          : 0),
+                  itemBuilder: (_, i) {
+                    final canCreate =
+                        _filteredList.isEmpty &&
+                        _searchController.text.trim().isNotEmpty;
+                    if (canCreate && i == 0) {
+                      final draftName = _searchController.text.trim();
+                      final createChecked = _selectedIds.contains(0);
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.add_circle_outline,
+                          color: Color(0xFF00D1A7),
                         ),
+                        title: Text('创建话题 #$draftName'),
+                        subtitle: const Text('暂无匹配话题，发布后将自动创建'),
+                        trailing: Checkbox(
+                          value: createChecked,
+                          onChanged: (_) {
+                            setState(() {
+                              if (createChecked) {
+                                _selectedIds.remove(0);
+                              } else {
+                                _selectedIds.add(0);
+                              }
+                            });
+                          },
+                          activeColor: const Color(0xFF00D1A7),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            if (createChecked) {
+                              _selectedIds.remove(0);
+                            } else {
+                              _selectedIds.add(0);
+                            }
+                          });
+                        },
+                      );
+                    }
+                    final idx = canCreate ? i - 1 : i;
+                    final m = _filteredList[idx];
+                    final id = m['id'] as int? ?? 0;
+                    final name = m['name'] as String? ?? '';
+                    final checked = _selectedIds.contains(id);
+                    return ListTile(
+                      title: Text(name.isEmpty ? '话题$id' : name),
+                      trailing: Checkbox(
+                        value: checked,
+                        onChanged: (_) {
+                          setState(() {
+                            if (checked) {
+                              _selectedIds.remove(id);
+                            } else {
+                              _selectedIds.add(id);
+                            }
+                          });
+                        },
+                        activeColor: const Color(0xFF00D1A7),
+                      ),
+                      onTap: () {
+                        setState(() {
+                          if (checked) {
+                            _selectedIds.remove(id);
+                          } else {
+                            _selectedIds.add(id);
+                          }
+                        });
+                      },
+                    );
+                  },
+                ),
         ),
         Padding(
           padding: const EdgeInsets.all(16),
@@ -860,10 +1196,18 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
             width: double.infinity,
             child: FilledButton(
               onPressed: () {
-                final selected = _list.where((m) => _selectedIds.contains(m['id'])).toList();
+                final selected = _list
+                    .where((m) => _selectedIds.contains(m['id']))
+                    .toList();
+                final draftName = _searchController.text.trim();
+                if (_selectedIds.contains(0) && draftName.isNotEmpty) {
+                  selected.add(<String, dynamic>{'id': 0, 'name': draftName});
+                }
                 widget.onConfirm(selected);
               },
-              style: FilledButton.styleFrom(backgroundColor: const Color(0xFF00D1A7)),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00D1A7),
+              ),
               child: const Text('完成'),
             ),
           ),
@@ -873,7 +1217,255 @@ class _TopicSheetContentState extends State<_TopicSheetContent> {
   }
 }
 
-/// 底部弹窗内容（代币占位，高度占屏幕 80%）
+/// 链 id -> 展示名（与 _tokenChainName 一致）
+String _tokenSheetChainName(String chainId) {
+  switch (chainId) {
+    case KnownTokens.bnbMainnet:
+      return 'BNB Chain';
+    case KnownTokens.ethMainnet:
+      return 'Ethereum';
+    case KnownTokens.baseMainnet:
+      return 'Base';
+    case KnownTokens.xLayer:
+      return 'X Layer';
+    default:
+      return chainId;
+  }
+}
+
+/// 发布动态时选择代币：按链展示全部 KnownTokens，完整显示代币信息（符号、链名、合约地址），单选后返回 { symbol, chain, contract_address, decimals }
+class _TokenSelectSheetContent extends StatefulWidget {
+  final Map<String, dynamic>? initialToken;
+  final void Function(Map<String, dynamic> token) onSelect;
+  final VoidCallback onCancel;
+
+  const _TokenSelectSheetContent({
+    this.initialToken,
+    required this.onSelect,
+    required this.onCancel,
+  });
+
+  @override
+  State<_TokenSelectSheetContent> createState() =>
+      _TokenSelectSheetContentState();
+}
+
+class _TokenSelectSheetContentState extends State<_TokenSelectSheetContent> {
+  static const List<Map<String, String>> _chains = [
+    {'id': KnownTokens.bnbMainnet, 'name': 'BNB Chain'},
+    {'id': KnownTokens.ethMainnet, 'name': 'Ethereum'},
+    {'id': KnownTokens.baseMainnet, 'name': 'Base'},
+    {'id': KnownTokens.xLayer, 'name': 'X Layer'},
+  ];
+
+  late String _selectedChainId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedChainId =
+        widget.initialToken?['chain'] as String? ?? KnownTokens.bnbMainnet;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = KnownTokens.byChain[_selectedChainId] ?? [];
+    final chainName = _tokenSheetChainName(_selectedChainId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '选择代币',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: widget.onCancel,
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 44,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: _chains.map((c) {
+              final id = c['id']!;
+              final name = c['name']!;
+              final selected = _selectedChainId == id;
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedChainId = id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? const Color(0xFF00D1A7).withOpacity(0.2)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(
+                        color: selected
+                            ? const Color(0xFF00D1A7)
+                            : Colors.transparent,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                          color: selected
+                              ? Colors.black87
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            itemCount: tokens.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: Colors.grey.shade200),
+            itemBuilder: (_, i) {
+              final meta = tokens[i];
+              final addr = meta.contractAddress;
+              return Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    widget.onSelect({
+                      'symbol': meta.symbol,
+                      'chain': _selectedChainId,
+                      'contract_address': meta.contractAddress,
+                      'decimals': meta.decimals,
+                      'chain_name': chainName,
+                    });
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Row(
+                      children: [
+                        TokenAvatar(
+                          symbol: meta.symbol,
+                          iconUrl: KnownTokens.getLogoUrl(
+                            _selectedChainId,
+                            meta.contractAddress,
+                          ),
+                          iconColor: Colors.grey,
+                          size: 44,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    meta.symbol,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade200,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      chainName,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: addr));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('已复制合约地址'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                },
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        addr,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
+                                          fontFamily: 'monospace',
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Icon(
+                                      Icons.copy,
+                                      size: 14,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey.shade400,
+                          size: 22,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 底部弹窗内容（代币占位，高度占屏幕 80%）— 保留给其他占位用
 class _PlaceholderSheetContent extends StatelessWidget {
   final String title;
   final String hint;
@@ -888,7 +1480,13 @@ class _PlaceholderSheetContent extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
           child: Row(
             children: [
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.close),
@@ -903,14 +1501,19 @@ class _PlaceholderSheetContent extends StatelessWidget {
             decoration: InputDecoration(
               hintText: hint,
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ),
         const SizedBox(height: 24),
         Expanded(
           child: Center(
-            child: Text('$title 列表待接入接口', style: TextStyle(color: Colors.grey[600])),
+            child: Text(
+              '$title 列表待接入接口',
+              style: TextStyle(color: Colors.grey[600]),
+            ),
           ),
         ),
       ],
@@ -929,10 +1532,16 @@ class _PlaceholderPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new), onPressed: () => Navigator.pop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(title),
         actions: [
-          IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('发布', style: TextStyle(color: Color(0xFF00D1A7))),
@@ -947,13 +1556,18 @@ class _PlaceholderPage extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: hint,
                 prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
             const SizedBox(height: 24),
             Expanded(
               child: Center(
-                child: Text('$title 列表待接入接口', style: TextStyle(color: Colors.grey[600])),
+                child: Text(
+                  '$title 列表待接入接口',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
               ),
             ),
           ],

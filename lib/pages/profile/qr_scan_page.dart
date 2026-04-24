@@ -17,9 +17,10 @@ class _QrScanPageState extends State<QrScanPage> {
     torchEnabled: false,
   );
   bool _alreadyPopped = false;
+
   /// 页面统一偏绿色
   static const Color _green = Color(0xFF00D1A7);
-  static final Color _greenLight = Colors.white;
+  static const Color _tipColor = Color(0xFFBFC2C7);
 
   void _onDetect(BarcodeCapture capture) {
     if (_alreadyPopped) return;
@@ -41,7 +42,7 @@ class _QrScanPageState extends State<QrScanPage> {
       final XFile? file = await picker.pickImage(source: ImageSource.gallery);
       if (file == null || !mounted) return;
       final path = file.path;
-      if (path == null || path.isEmpty) return;
+      if (path.isEmpty) return;
       final capture = await _controller.analyzeImage(path);
       if (!mounted) return;
       if (capture != null) {
@@ -55,15 +56,15 @@ class _QrScanPageState extends State<QrScanPage> {
         }
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('未识别到二维码/条码')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('未识别到二维码/条码')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('解析失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('解析失败: $e')));
       }
     }
   }
@@ -80,20 +81,36 @@ class _QrScanPageState extends State<QrScanPage> {
 
   @override
   Widget build(BuildContext context) {
+    const double frameSize = 240;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 22),
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.black87,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('扫一扫', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+        title: const Text(
+          '扫一扫',
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         centerTitle: true,
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.photo_library_outlined, color: Colors.white, size: 26),
+            icon: const Icon(
+              Icons.photo_library_outlined,
+              color: Colors.black87,
+              size: 24,
+            ),
             onPressed: _pickFromGallery,
           ),
         ],
@@ -101,21 +118,34 @@ class _QrScanPageState extends State<QrScanPage> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          MobileScanner(
-            controller: _controller,
-            onDetect: _onDetect,
+          MobileScanner(controller: _controller, onDetect: _onDetect),
+          _buildMask(frameSize),
+          _buildScanFrame(frameSize),
+          Positioned.fill(
+            child: Align(
+              alignment: const Alignment(0, 0.08),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _toggleTorch,
+                  customBorder: const CircleBorder(),
+                  child: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Icon(Icons.flash_on, color: _green, size: 30),
+                  ),
+                ),
+              ),
+            ),
           ),
-          // 四角绿色 L 形扫描框 + 框内闪光灯（整体上移）
-          _buildScanFrame(),
           // 底部说明文字（偏绿色）
           Positioned(
             left: 0,
             right: 0,
-            bottom: 100,
+            bottom: 162,
             child: Center(
               child: Text(
                 '将二维码/条码放入框内,即可自动扫描',
-                style: TextStyle(color: _greenLight, fontSize: 14),
+                style: const TextStyle(color: _tipColor, fontSize: 14),
               ),
             ),
           ),
@@ -133,9 +163,14 @@ class _QrScanPageState extends State<QrScanPage> {
                     backgroundColor: _green,
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(26),
+                    ),
                   ),
-                  child: const Text('照片', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  child: const Text(
+                    '照片',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ),
@@ -145,8 +180,7 @@ class _QrScanPageState extends State<QrScanPage> {
     );
   }
 
-  Widget _buildScanFrame() {
-    const double frameSize = 240;
+  Widget _buildScanFrame(double frameSize) {
     const double cornerLen = 32;
     const double strokeWidth = 4;
 
@@ -167,25 +201,61 @@ class _QrScanPageState extends State<QrScanPage> {
                 ),
               ),
               Positioned(
-                left: 0,
-                right: 0,
-                bottom: frameSize * 0.35,
-                child: Center(
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _toggleTorch,
-                      customBorder: const CircleBorder(),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Icon(Icons.flash_on, color: _green, size: 28),
-                      ),
-                    ),
-                  ),
-                ),
+                top: frameSize * 0.3,
+                left: 16,
+                right: 16,
+                child: Container(height: 2, color: const Color(0xFF2FAAFF)),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMask(double frameSize) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (_, constraints) {
+            final centerY = constraints.maxHeight * 0.375;
+            final topHeight = centerY - frameSize / 2;
+            final bottomTop = centerY + frameSize / 2;
+            final sideWidth = (constraints.maxWidth - frameSize) / 2;
+            const maskColor = Color(0x88000000);
+            return Stack(
+              children: [
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: topHeight > 0 ? topHeight : 0,
+                  child: Container(color: maskColor),
+                ),
+                Positioned(
+                  top: bottomTop,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(color: maskColor),
+                ),
+                Positioned(
+                  top: topHeight,
+                  left: 0,
+                  width: sideWidth > 0 ? sideWidth : 0,
+                  height: frameSize,
+                  child: Container(color: maskColor),
+                ),
+                Positioned(
+                  top: topHeight,
+                  right: 0,
+                  width: sideWidth > 0 ? sideWidth : 0,
+                  height: frameSize,
+                  child: Container(color: maskColor),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

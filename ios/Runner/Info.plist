@@ -49,5 +49,12 @@
 	<string>用于扫描二维码以填入转账地址</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于从相册选择图片以识别二维码</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于将分享海报保存到你的相册</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

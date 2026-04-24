@@ -1,19 +1,18 @@
 import 'package:education/config/app_config.dart';
 import 'package:education/modules/dynamic/models/post_info.dart';
 import 'package:education/pages/market/dynamic_detail_page.dart';
-import 'package:education/pages/market/publish_dynamic_page.dart';
+import 'package:education/pages/market/market_quotes_tab.dart';
 import 'package:education/providers/feed_refresh_provider.dart';
 import 'package:education/providers/user_provider.dart';
 import 'package:education/services/dynamic_service.dart';
 import 'package:education/services/user_service.dart';
 import 'package:education/widgets/chat/avatar.dart';
 import 'package:education/widgets/follower/community_post_card.dart';
-import 'package:education/widgets/follower/debox_floating_menu.dart';
+import 'package:education/widgets/follower/bbt_floating_menu.dart';
 import 'package:education/widgets/follower/post_more_menu_sheet.dart';
 import 'package:education/widgets/common/empty_state_view.dart';
 import 'package:education/widgets/common/share_sheet.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class MarketFeedPage extends ConsumerWidget {
@@ -22,7 +21,7 @@ class MarketFeedPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       initialIndex: 0,
       child: Scaffold(
         appBar: AppBar(
@@ -34,7 +33,10 @@ class MarketFeedPage extends ConsumerWidget {
                 child: TabBar(
                   isScrollable: true,
                   labelColor: Colors.black,
-                  labelStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  labelStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                   unselectedLabelColor: Colors.grey,
                   unselectedLabelStyle: const TextStyle(fontSize: 14),
                   indicatorColor: const Color(0xFF00D29D),
@@ -42,21 +44,30 @@ class MarketFeedPage extends ConsumerWidget {
                   indicatorWeight: 2,
                   dividerColor: Colors.transparent,
                   tabs: const [
-                    Tab(text: '关注'),
+                    Tab(text: '广场'),
                     Tab(text: '行情'),
                     Tab(text: '活动'),
+                    Tab(text: 'DApp'),
                   ],
                 ),
               ),
-              IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
+              IconButton(
+                icon: const Icon(Icons.notifications_none),
+                onPressed: () {},
+              ),
               const SizedBox(width: 8),
             ],
           ),
         ),
         body: TabBarView(
-          children: [const FollowTab(), const MarketTab(), const ActivityTab()],
+          children: [
+            const PlazaFeedTab(),
+            const MarketQuotesTab(),
+            const ActivityTab(),
+            const _DAppTab(),
+          ],
         ),
-        floatingActionButton: const DeBoxFloatingMenu(),
+        floatingActionButton: const BBTFloatingMenu(),
       ),
     );
   }
@@ -72,11 +83,7 @@ Widget _buildMessageWithAvatar({
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Avatar(
-          url: avatarUrl,
-          size: 42,
-          borderRadius: 6,
-        ),
+        Avatar(url: avatarUrl, size: 42, borderRadius: 6),
         const SizedBox(width: 12),
         Expanded(child: child),
       ],
@@ -84,14 +91,61 @@ Widget _buildMessageWithAvatar({
   );
 }
 
-class FollowTab extends ConsumerStatefulWidget {
-  const FollowTab({super.key});
+/// 广场 Tab：子栏「推荐」（公开动态全站倒序）+「广场」（原 following 关注流接口）
+class PlazaFeedTab extends StatelessWidget {
+  const PlazaFeedTab({super.key});
 
   @override
-  ConsumerState<FollowTab> createState() => _FollowTabState();
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      initialIndex: 0,
+      child: Column(
+        children: [
+          Material(
+            color: Colors.white,
+            child: TabBar(
+              // 与行情页分类 Row 一致：从左侧起排，不占满整行居中
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              padding: EdgeInsets.zero,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 16),
+              labelColor: const Color(0xFF00D29D),
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: const Color(0xFF00D29D),
+              indicatorSize: TabBarIndicatorSize.label,
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(text: '推荐'),
+                Tab(text: '关注'),
+              ],
+            ),
+          ),
+          const Expanded(
+            child: TabBarView(
+              children: [
+                FeedListTab(visibility: 'public'),
+                FeedListTab(visibility: 'following'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _FollowTabState extends ConsumerState<FollowTab> {
+class FeedListTab extends ConsumerStatefulWidget {
+  /// `public`：全站公开动态，按 post_id 倒序；`following`：原关注流（网关 following）
+  final String visibility;
+
+  const FeedListTab({super.key, required this.visibility});
+
+  @override
+  ConsumerState<FeedListTab> createState() => _FeedListTabState();
+}
+
+class _FeedListTabState extends ConsumerState<FeedListTab> {
   final DynamicApi _api = DynamicApi();
   List<PostInfo> _posts = [];
   int _cursor = 0;
@@ -115,7 +169,8 @@ class _FollowTabState extends ConsumerState<FollowTab> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _loadMore();
     }
   }
@@ -130,13 +185,21 @@ class _FollowTabState extends ConsumerState<FollowTab> {
       _hasMore = true;
     });
     try {
-      final resp = await _api.getFeed(visibility: 'following', cursor: 0, limit: 20);
+      final resp = await _api.getFeed(
+        visibility: widget.visibility,
+        cursor: 0,
+        limit: 20,
+      );
       final raw = resp['list'] as List<dynamic>? ?? [];
       if (AppConfig.isDebug && raw.isNotEmpty) {
         final first = raw.first as Map<String, dynamic>;
-        debugPrint('[Feed] 首条 raw likes_count=${first['likes_count']} comments_count=${first['comments_count']} keys=${first.keys.join(',')}');
+        debugPrint(
+          '[Feed] 首条 raw likes_count=${first['likes_count']} comments_count=${first['comments_count']} keys=${first.keys.join(',')}',
+        );
       }
-      final list = raw.map((e) => PostInfo.fromMap(e as Map<String, dynamic>)).toList();
+      final list = raw
+          .map((e) => PostInfo.fromMap(e as Map<String, dynamic>))
+          .toList();
       final next = (resp['next_cursor'] as num?)?.toInt() ?? 0;
       final hasMore = resp['has_more'] as bool? ?? false;
       if (mounted) {
@@ -162,9 +225,15 @@ class _FollowTabState extends ConsumerState<FollowTab> {
     if (!mounted) return;
     setState(() => _loadingMore = true);
     try {
-      final resp = await _api.getFeed(visibility: 'following', cursor: _cursor, limit: 20);
+      final resp = await _api.getFeed(
+        visibility: widget.visibility,
+        cursor: _cursor,
+        limit: 20,
+      );
       final raw = resp['list'] as List<dynamic>? ?? [];
-      final list = raw.map((e) => PostInfo.fromMap(e as Map<String, dynamic>)).toList();
+      final list = raw
+          .map((e) => PostInfo.fromMap(e as Map<String, dynamic>))
+          .toList();
       final next = (resp['next_cursor'] as num?)?.toInt() ?? 0;
       final hasMore = resp['has_more'] as bool? ?? false;
       if (mounted) {
@@ -201,9 +270,9 @@ class _FollowTabState extends ConsumerState<FollowTab> {
       post: post,
       onShared: () {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('已分享到聊天')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('已分享到聊天')));
         }
       },
     );
@@ -214,12 +283,16 @@ class _FollowTabState extends ConsumerState<FollowTab> {
       await _api.updatePost(postId: post.postId, isPinned: true);
       if (mounted) _load();
     } catch (_) {
-      if (mounted) {/* 置顶失败，静默处理 */}
+      if (mounted) {
+        /* 置顶失败，静默处理 */
+      }
     }
   }
 
   void _onEdit(PostInfo post) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('编辑功能待实现')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('编辑功能待实现')));
   }
 
   Future<void> _onPrivate(PostInfo post) async {
@@ -229,7 +302,9 @@ class _FollowTabState extends ConsumerState<FollowTab> {
         _load();
       }
     } catch (_) {
-      if (mounted) {/* 操作失败，静默处理 */}
+      if (mounted) {
+        /* 操作失败，静默处理 */
+      }
     }
   }
 
@@ -240,7 +315,9 @@ class _FollowTabState extends ConsumerState<FollowTab> {
         _load();
       }
     } catch (_) {
-      if (mounted) {/* 删除失败，静默处理 */}
+      if (mounted) {
+        /* 删除失败，静默处理 */
+      }
     }
   }
 
@@ -251,7 +328,9 @@ class _FollowTabState extends ConsumerState<FollowTab> {
         _load();
       }
     } catch (_) {
-      if (mounted) {/* 转发失败，静默处理 */}
+      if (mounted) {
+        /* 转发失败，静默处理 */
+      }
     }
   }
 
@@ -259,9 +338,12 @@ class _FollowTabState extends ConsumerState<FollowTab> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => DynamicDetailPage(postId: post.postId, initialPost: post),
+        builder: (_) =>
+            DynamicDetailPage(postId: post.postId, initialPost: post),
       ),
-    ).then((_) { if (mounted) _load(); });
+    ).then((_) {
+      if (mounted) _load();
+    });
   }
 
   void _onLike(PostInfo p) async {
@@ -339,7 +421,9 @@ class _FollowTabState extends ConsumerState<FollowTab> {
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(feedRefreshTriggerProvider, (prev, next) {
-      if (prev != next && mounted) _load();
+      if (prev != next && mounted) {
+        _load();
+      }
     });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -368,16 +452,18 @@ class _FollowTabState extends ConsumerState<FollowTab> {
               child: const EmptyStateView(),
             )
           else
-            ..._posts.map((p) => _FeedPostItem(
-                  post: p,
-                  onTap: () => _openDetail(p),
-                  onLike: () => _onLike(p),
-                  onComment: () => _openDetail(p),
-                  onStar: () => _onStar(p),
-                  onForward: () => _onForward(p),
-                  onShare: () => _onShare(p),
-                  onMoreWithLink: (link) => _showPostMoreMenu(p, link),
-                )),
+            ..._posts.map(
+              (p) => _FeedPostItem(
+                post: p,
+                onTap: () => _openDetail(p),
+                onLike: () => _onLike(p),
+                onComment: () => _openDetail(p),
+                onStar: () => _onStar(p),
+                onForward: () => _onForward(p),
+                onShare: () => _onShare(p),
+                onMoreWithLink: (link) => _showPostMoreMenu(p, link),
+              ),
+            ),
           if (_loadingMore)
             const Padding(
               padding: EdgeInsets.all(16),
@@ -427,7 +513,9 @@ class _FeedPostItemState extends State<_FeedPostItem> {
 
   Future<void> _loadUser() async {
     try {
-      final data = await UserApi().getUserOtherInfo({'userId': widget.post.userId});
+      final data = await UserApi().getUserOtherInfo({
+        'userId': widget.post.userId,
+      });
       if (mounted) setState(() => _userInfo = data);
     } catch (_) {}
   }
@@ -454,20 +542,20 @@ class _FeedPostItemState extends State<_FeedPostItem> {
   }
 }
 
-class MarketTab extends StatelessWidget {
-  const MarketTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('行情列表内容'));
-  }
-}
-
 class ActivityTab extends StatelessWidget {
   const ActivityTab({super.key});
 
   @override
   Widget build(BuildContext context) {
     return const Center(child: Text('活动网格内容'));
+  }
+}
+
+class _DAppTab extends StatelessWidget {
+  const _DAppTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text('DApp'));
   }
 }

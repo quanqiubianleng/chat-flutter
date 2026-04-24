@@ -18,6 +18,7 @@ import 'package:education/pb/protos/chat.pb.dart';
 import 'package:education/core/cache/user_cache.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:education/core/utils/timer.dart';
+import 'package:education/pages/user/user_info.dart';
 
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/logger.dart';
@@ -26,7 +27,14 @@ import '../../modules/chat/models/chat_display_item.dart';
 class MessageBubble extends ConsumerWidget {
   final Event message;
   final bool showTime;
-  const MessageBubble({Key? key, required this.message,this.showTime = true,}) : super(key: key);
+  final bool canOpenUserProfile;
+
+  const MessageBubble({
+    Key? key,
+    required this.message,
+    this.showTime = true,
+    this.canOpenUserProfile = true,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -65,6 +73,11 @@ class MessageBubble extends ConsumerWidget {
           // 禁言消息
           WSEventType.groupClearMute,
           WSEventType.groupMute,
+          // 群设置消息
+          WSEventType.groupRestrictAddFriendOn,
+          WSEventType.groupRestrictAddFriendOff,
+          WSEventType.groupNewMemberTipOn,
+          WSEventType.groupNewMemberTipOff,
         };
 
         // 消息信息
@@ -97,7 +110,25 @@ class MessageBubble extends ConsumerWidget {
                   children: [
                     if (!isMe)
                       senderAsync.when(
-                        data: (user) => Avatar(url: user.avatarUrl),
+                        data: (user) => GestureDetector(
+                          onTap: message.delivery == WSDelivery.group
+                              ? () {
+                                  if (!canOpenUserProfile) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('加好友限制已开启')),
+                                    );
+                                    return;
+                                  }
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => UserInfo(userId: senderId),
+                                    ),
+                                  );
+                                }
+                              : null,
+                          child: Avatar(url: user.avatarUrl),
+                        ),
                         loading: () => const Avatar(url: null),
                         error: (_, __) => const Avatar(url: null),
                       ),
@@ -182,7 +213,12 @@ class MessageBubble extends ConsumerWidget {
   Widget _groupNoticeMessage(Event message, {required bool showTime}){
     // 时间处理（更安全）
     final dt = parseTimestamp(message.timestamp);
-    List<String> sender = message.senderNickname.split('、').map((e) => e.trim()).toList();
+    final rawNick = message.senderNickname.trim();
+    final sender = rawNick.isEmpty
+        ? <String>[]
+        : rawNick.split('、').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final leadNick = sender.isNotEmpty ? sender[0] : '';
+    final body = message.content.trim();
     return Center(
       child: Column(
         children: [
@@ -195,19 +231,29 @@ class MessageBubble extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
           ],
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                sender[0],
-                style: const TextStyle(color: Colors.green, fontSize: 12),
-              ),
-              Text(
-                " ${message.content}",
+          if (leadNick.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                body.isNotEmpty ? body : message.content,
+                textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.grey, fontSize: 12),
-              )
-            ],
-          ),
+              ),
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  leadNick,
+                  style: const TextStyle(color: Colors.green, fontSize: 12),
+                ),
+                Text(
+                  body.isNotEmpty ? ' $body' : ' ${message.content}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
           const SizedBox(height: 10),
         ],
       ),

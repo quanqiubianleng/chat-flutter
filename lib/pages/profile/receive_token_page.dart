@@ -35,13 +35,21 @@ class ReceiveTokenPage extends StatefulWidget {
 }
 
 class _ReceiveTokenPageState extends State<ReceiveTokenPage> {
+  /// 与 Token 页一致；EVM 链（前四项）共用同一 0x 地址
   static const List<_ReceiveNetworkOption> _networks = [
-    _ReceiveNetworkOption(id: AlchemyService.bnbMainnet, name: 'BNB Chain', iconColor: Color(0xFFF3BA2F), icon: Icons.currency_bitcoin),
-    _ReceiveNetworkOption(id: 'x-layer', name: 'X Layer', iconColor: Color(0xFF000000), icon: Icons.layers),
-    _ReceiveNetworkOption(id: 'base-mainnet', name: 'Base', iconColor: Color(0xFF0052FF), icon: Icons.circle),
     _ReceiveNetworkOption(id: AlchemyService.ethMainnet, name: 'Ethereum', iconColor: Color(0xFF627EEA), icon: Icons.diamond_outlined),
-    _ReceiveNetworkOption(id: 'eni', name: 'Eni', iconColor: Color(0xFF00B4AB), icon: Icons.water_drop),
+    _ReceiveNetworkOption(id: AlchemyService.bnbMainnet, name: 'BNB Chain', iconColor: Color(0xFFF3BA2F), icon: Icons.currency_bitcoin),
+    _ReceiveNetworkOption(id: 'base-mainnet', name: 'Base', iconColor: Color(0xFF0052FF), icon: Icons.circle),
+    _ReceiveNetworkOption(id: 'x-layer', name: 'X Layer', iconColor: Color(0xFF000000), icon: Icons.layers),
+    _ReceiveNetworkOption(id: 'solana', name: 'Solana', iconColor: Color(0xFF9945FF), icon: Icons.link),
   ];
+
+  static const Set<String> _evmChainIds = {
+    AlchemyService.ethMainnet,
+    AlchemyService.bnbMainnet,
+    'base-mainnet',
+    'x-layer',
+  };
 
   late String _currentChain;
 
@@ -172,6 +180,13 @@ class _ReceiveTokenPageState extends State<ReceiveTokenPage> {
           child: Column(
             children: [
               const SizedBox(height: 24),
+              // 说明：EVM 链共用同一地址
+              Text(
+                'EVM 链（以太坊、BNB Chain、Base、X Layer）共用同一地址，切换网络仅用于标识收款链。',
+                style: TextStyle(fontSize: 12, color: Colors.grey[600], height: 1.3),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
               // 网络选择
               GestureDetector(
                 onTap: _pickNetwork,
@@ -273,9 +288,11 @@ class _ReceiveTokenPageState extends State<ReceiveTokenPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              // 警告文案
+              // 警告文案（EVM 链强调链标识；Solana 提示地址格式不同）
               Text(
-                '*该地址仅接收来自${network.name}的资产，发送其他网络的代币将会永久丢失且无法找回',
+                _evmChainIds.contains(_currentChain)
+                    ? '*请确保对方从${network.name}向该地址转账，误发到其他链可能导致资产丢失'
+                    : '*当前为 EVM 格式地址，Solana 使用不同地址，请勿向本地址转入 SOL',
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey.shade600,

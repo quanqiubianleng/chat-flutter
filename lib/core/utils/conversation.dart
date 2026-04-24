@@ -21,17 +21,38 @@ String generateTempConversationId({
   }
 }
 
-/// 根据会话ID获取userID
-int getUserIDsByConversationId(String conversationId, int userId){
+/// 根据会话ID获取userID（单聊 temp_single_min_max）
+int getUserIDsByConversationId(String conversationId, int userId) {
   List<String> parts = conversationId.split('_');
-  if(int.parse(parts[2]) == userId){
-    return int.parse(parts[3]);
-  }
-  return int.parse(parts[2]);
+  if (parts.length < 4) return 0;
+  final a = int.tryParse(parts[2]);
+  final b = int.tryParse(parts[3]);
+  if (a == null || b == null) return 0;
+  return a == userId ? b : a;
 }
 
-/// 根据会话ID获取groupId
-int getGroupIdByConversationId(String conversationId){
+/// 根据会话ID获取groupId（群聊 temp_group_id）
+int getGroupIdByConversationId(String conversationId) {
   List<String> parts = conversationId.split('_');
-  return int.parse(parts[2]);
+  if (parts.length < 3) return 0;
+  return int.tryParse(parts[2]) ?? 0;
+}
+
+/// 安全解析：单聊时返回对方 userId，解析失败返回 null
+int? tryParseOtherUserIdFromConvId(String conversationId, int currentUserId) {
+  if (conversationId.isEmpty) return null;
+  final parts = conversationId.split('_');
+  if (parts.length < 4 || parts[1] != 'single') return null;
+  final a = int.tryParse(parts[2]);
+  final b = int.tryParse(parts[3]);
+  if (a == null || b == null) return null;
+  return a == currentUserId ? b : a;
+}
+
+/// 安全解析：群聊时返回 groupId，解析失败返回 null
+int? tryParseGroupIdFromConvId(String conversationId) {
+  if (conversationId.isEmpty) return null;
+  final parts = conversationId.split('_');
+  if (parts.length < 3 || parts[1] != 'group') return null;
+  return int.tryParse(parts[2]);
 }

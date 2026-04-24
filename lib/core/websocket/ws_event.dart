@@ -88,6 +88,10 @@ class WSEventType {
   static const String removeGroupMembers    = 'remove_group_members';    // 移除群组成员
   static const String groupMute    = 'group_mute';    // 群组禁言
   static const String groupClearMute    = 'group_clear_mute';    // 群组禁言
+  static const String groupRestrictAddFriendOn = 'group_restrict_add_friend_on'; // 开启群内加好友限制
+  static const String groupRestrictAddFriendOff = 'group_restrict_add_friend_off'; // 关闭群内加好友限制
+  static const String groupNewMemberTipOn = 'group_new_member_tip_on'; // 开启新成员加入提醒
+  static const String groupNewMemberTipOff = 'group_new_member_tip_off'; // 关闭新成员加入提醒
 }
 
 /// 消息状态（可选，用于 UI 显示）

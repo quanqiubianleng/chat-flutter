@@ -1,10 +1,14 @@
+import 'dart:convert';
+
+import 'package:education/config/known_tokens.dart';
 import 'package:education/modules/dynamic/models/post_info.dart';
 import 'package:education/services/user_service.dart';
 import 'package:education/widgets/chat/avatar.dart';
+import 'package:education/widgets/common/token_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-/// 动态卡片（DeBox 风格，支持真实数据）
+/// 动态卡片（BBT 风格，支持真实数据）
 /// [showLeadingAvatar] 为 true 时，左侧显示头像；为 false 时由父级提供（用于 _buildMessageWithAvatar 布局）
 class CommunityPostCard extends StatefulWidget {
   final PostInfo post;
@@ -81,9 +85,79 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
     return '刚刚';
   }
 
+  /// 从动态 on_chain_data 解析关联代币（与发布页保存格式一致）
+  static Map<String, dynamic>? _parseTokenFromPost(PostInfo p) {
+    if (p.onChainData.isEmpty) return null;
+    try {
+      final map = jsonDecode(p.onChainData) as Map<String, dynamic>?;
+      final token = map?['token'];
+      if (token is Map<String, dynamic> &&
+          (token['symbol'] ?? '').toString().trim().isNotEmpty) {
+        return token;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static String _tokenChainName(dynamic chain) {
+    if (chain == null) return '';
+    final s = chain.toString();
+    switch (s) {
+      case KnownTokens.bnbMainnet:
+        return 'BNB Chain';
+      case KnownTokens.ethMainnet:
+        return 'Ethereum';
+      case KnownTokens.baseMainnet:
+        return 'Base';
+      case KnownTokens.xLayer:
+        return 'X Layer';
+      default:
+        return s;
+    }
+  }
+
+  /// 代币 Chip（与发布页选择代币后的展示样式一致：头像 + 符号·链名，小字号、小边距）
+  Widget _buildTokenChip(Map<String, dynamic> token) {
+    final symbol = (token['symbol'] as String? ?? '?').toString();
+    final chain = token['chain'] as String?;
+    final contractAddress = token['contract_address'] as String?;
+    final chainName = _tokenChainName(chain);
+    final logoUrl = chain != null && contractAddress != null
+        ? KnownTokens.getLogoUrl(chain, contractAddress)
+        : null;
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        Theme(
+          data: Theme.of(context).copyWith(
+            chipTheme: Theme.of(context).chipTheme.copyWith(
+              labelStyle: const TextStyle(fontSize: 11, color: Colors.black),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            ),
+          ),
+          child: Chip(
+            avatar: TokenAvatar(
+              symbol: symbol,
+              iconUrl: logoUrl,
+              size: 20,
+              iconColor: const Color(0xFF00D1A7),
+            ),
+            label: Text(
+              chainName.isNotEmpty ? '$symbol · $chainName' : symbol,
+              style: const TextStyle(fontSize: 11, color: Colors.black),
+            ),
+            backgroundColor: const Color(0xFF00D1A7).withOpacity(0.2),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.post;
+    final token = _parseTokenFromPost(p);
     return GestureDetector(
       onTap: widget.onTap,
       child: Container(
@@ -174,6 +248,10 @@ class _CommunityPostCardState extends State<CommunityPostCard> {
                 maxLines: 10,
                 overflow: TextOverflow.ellipsis,
               ),
+            if (token != null) ...[
+              const SizedBox(height: 10),
+              _buildTokenChip(token),
+            ],
             if (p.mediaList.isNotEmpty) ...[
               const SizedBox(height: 10),
               _buildMedia(p.mediaList),

@@ -21,21 +21,21 @@ import '../../providers/follower_provider.dart';
 class UserInfo extends ConsumerStatefulWidget {
   final int userId;
 
-  const UserInfo({
-    super.key,
-    required this.userId,
-  });
+  const UserInfo({super.key, required this.userId});
 
   @override
   ConsumerState<UserInfo> createState() => _UserInfoState();
 }
 
-class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderStateMixin {
+class _UserInfoState extends ConsumerState<UserInfo>
+    with SingleTickerProviderStateMixin {
   final api = UserApi();
 
   String _convID = ""; // 存储当前会话ID
-  bool _isLoading = false;      // 按钮加载状态
-  int _isFollowed = 0;     // 当前是否已关注
+  bool _isLoading = false; // 按钮加载状态
+  int _isFollowed = 0; // 当前是否已关注
+  bool _isBlocked = false; // 当前用户是否已把此人加入屏蔽列表（屏蔽 = 不接收其私信）
+  int _currentUserId = 0; // 当前登录用户 ID
   late TabController _tabController;
   late FollowerRepository followerRepo;
 
@@ -66,20 +66,40 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
     setState(() => isLoading = true);
 
     try {
-      final userInfo = await api.getUserOtherInfo({"userId": widget.userId});
-      // 获取当前用户ID
       final uidAsync = await ref.read(userProvider.future);
-      final currentUserId = uidAsync!;
-      final convID = generateTempConversationId(userIdA: currentUserId, userIdB: widget.userId, isGroup: false);
+      final currentUserId = uidAsync ?? 0;
+      final userInfo = await api.getUserOtherInfo({"userId": widget.userId});
+      final convID = generateTempConversationId(
+        userIdA: currentUserId,
+        userIdB: widget.userId,
+        isGroup: false,
+      );
+
+      bool isBlocked = false;
+      if (currentUserId > 0 && currentUserId != widget.userId) {
+        try {
+          final privacy = await api.getPrivacySettings();
+          final ids = privacy['blocked_user_ids'];
+          if (ids is List) {
+            isBlocked = ids.any(
+              (e) => (e is num) && e.toInt() == widget.userId,
+            );
+          }
+        } catch (_) {}
+      }
 
       AppLogger.d("userInfo");
       AppLogger.d(userInfo);
-      setState(() {
-        currentUser = userInfo;
-        isLoading = false;
-        _isFollowed = userInfo['is_friend'];
-        _convID = convID;
-      });
+      if (mounted) {
+        setState(() {
+          currentUser = userInfo;
+          isLoading = false;
+          _currentUserId = currentUserId;
+          _isFollowed = userInfo['is_friend'];
+          _isBlocked = isBlocked;
+          _convID = convID;
+        });
+      }
     } catch (e) {
       AppLogger.d("加载用户信息失败1: $e");
       if (mounted) {
@@ -91,15 +111,98 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
     }
   }
 
+  /// 屏蔽 / 取消屏蔽（屏蔽后不接收对方私信，对方也无法给你发私信）
+  Future<void> _toggleBlock() async {
+    final uid = ref.read(userProvider).value;
+    if (uid == null || uid == 0 || uid == widget.userId) return;
+    setState(() => _isLoading = true);
+    try {
+      if (_isBlocked) {
+        await api.unblockUser(widget.userId);
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('已取消屏蔽')));
+      } else {
+        await api.blockUser(widget.userId);
+        if (mounted)
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('已加入黑名单，将不再接收其私信')));
+      }
+      await _loadUserData();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败: $e')));
+      }
+    }
+  }
+
+  Future<void> _openChatWithPrecheck() async {
+    if (_currentUserId <= 0 || _currentUserId == widget.userId) return;
+    if (widget.userId <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('参数无效，请稍后重试')));
+      }
+      return;
+    }
+    try {
+      final result = await api.canSendPmTo(widget.userId);
+      final canSend = result['can'] == true;
+      if (!canSend) {
+        final reason = (result['reason']?.toString().isNotEmpty ?? false)
+            ? result['reason'].toString()
+            : '当前无法给对方发送私信';
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(reason)));
+        }
+        return;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('私信权限校验失败，请稍后再试')));
+      }
+      return;
+    }
+    final convId = generateTempConversationId(
+      userIdA: _currentUserId,
+      userIdB: widget.userId,
+      isGroup: false,
+    );
+    if (convId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('会话初始化失败，请稍后重试')));
+      }
+      return;
+    }
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BBTChatPage(chatId: convId, peerUserId: widget.userId),
+      ),
+    );
+  }
+
   /// 关注 / 取消关注
   Future<void> _toggleFollow() async {
-
     final uidAsync = ref.read(userProvider);
     final uid = uidAsync.value;
     if (uid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先登录')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先登录')));
       return;
     }
 
@@ -112,15 +215,13 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
       final resp = await api.follower({"userId": widget.userId});
       bool success = resp['code'] == HttpStatus.success;
       String msg = resp['msg'] ?? (_isFollowed > 0 ? '取消关注成功' : '关注成功');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       _loadUserData();
       if (success) {
         // 关注更新sqlite
-        if(_isFollowed > 0){
+        if (_isFollowed > 0) {
           await followerRepo.unfollow(uid, widget.userId);
-        }else{
+        } else {
           await followerRepo.follow(uid, widget.userId);
         }
 
@@ -131,28 +232,34 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
 
         final tempClientMsgId = const Uuid().v4();
         final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-        final convID = generateTempConversationId(isGroup: false, userIdA: widget.userId, userIdB: uid);
+        final convID = generateTempConversationId(
+          isGroup: false,
+          userIdA: widget.userId,
+          userIdB: uid,
+        );
 
         final msg = Event()
-        ..delivery = WSDelivery.single
-        ..type = type
-        ..fromUser = Int64(uid)
-        ..toUser = Int64(widget.userId)
-        ..clientMsgId = tempClientMsgId          // 客户端防重
-        ..content = '关注了你'
-        ..timestamp = Int64(tempTimestamp);
-        ws.send(msg);
-
-        if (resp["isFriend"]){
-          final msg2 = Event()
           ..delivery = WSDelivery.single
-          ..type = WSEventType.message
+          ..type = type
           ..fromUser = Int64(uid)
           ..toUser = Int64(widget.userId)
-          ..conversationId = convID
-          ..clientMsgId = tempClientMsgId          // 客户端防重
-          ..content = '我们已互相关注，可以开始聊天了'
+          ..clientMsgId =
+              tempClientMsgId // 客户端防重
+          ..content = '关注了你'
           ..timestamp = Int64(tempTimestamp);
+        ws.send(msg);
+
+        if (resp["isFriend"]) {
+          final msg2 = Event()
+            ..delivery = WSDelivery.single
+            ..type = WSEventType.message
+            ..fromUser = Int64(uid)
+            ..toUser = Int64(widget.userId)
+            ..conversationId = convID
+            ..clientMsgId =
+                tempClientMsgId // 客户端防重
+            ..content = '我们已互相关注，可以开始聊天了'
+            ..timestamp = Int64(tempTimestamp);
 
           ws.send(msg2);
         }
@@ -191,16 +298,17 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
               flexibleSpace: Stack(
                 fit: StackFit.expand,
                 children: [
-                  FlexibleSpaceBar(
-                    background: _buildAppBarBackground(),
-                  ),
+                  FlexibleSpaceBar(background: _buildAppBarBackground()),
                   Positioned(
                     top: 0,
                     left: 0,
                     right: 0,
                     child: SafeArea(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                         child: Row(
                           children: [
                             GestureDetector(
@@ -211,7 +319,11 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
                                   color: Color(0x4D000000),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+                                child: const Icon(
+                                  Icons.arrow_back_ios_new,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
                               ),
                             ),
                             const Spacer(),
@@ -221,7 +333,11 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
                                 color: Color(0x4D000000),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.share_outlined, color: Colors.white, size: 20),
+                              child: const Icon(
+                                Icons.share_outlined,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                             ),
                           ],
                         ),
@@ -231,9 +347,7 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
                 ],
               ),
             ),
-            SliverToBoxAdapter(
-              child: _buildUserInfoCard(),
-            ),
+            SliverToBoxAdapter(child: _buildUserInfoCard()),
             SliverPersistentHeader(
               pinned: true,
               delegate: _SliverTabBarDelegate(
@@ -263,6 +377,10 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
   }
 
   Widget _buildUserInfoCard() {
+    final username = (currentUser!['username'] ?? '未知用户').toString();
+    final remarkRaw = (currentUser!['remark'] ?? '').toString().trim();
+    final hasRemark = remarkRaw.isNotEmpty;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
@@ -271,79 +389,133 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  currentUser!['avatar_url'] ?? '',
-                  width: 60,
-                  height: 60,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.person, size: 60),
-                ),
-              ),
-              const SizedBox(width: 16),
               Expanded(
-                child: Text(
-                  currentUser!['username'] ?? '未知用户',
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        currentUser!['avatar_url'] ?? '',
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            const Icon(Icons.person, size: 60),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      username,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 12),
               GestureDetector(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DeBoxChatPage(chatId: _convID),
-                    ),
-                  );
-                },
+                onTap: _openChatWithPrecheck,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey[200],
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFF08AD56)),
                   ),
-                  child: const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Color(0xFF08AD56)),
+                  child: const Icon(
+                    Icons.chat_bubble_outline_rounded,
+                    size: 16,
+                    color: Color(0xFF08AD56),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
               GestureDetector(
                 onTap: _toggleFollow,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: _isFollowed > 0 ? Colors.grey : const Color(0xFF08AD56),
+                    color: _isFollowed > 0
+                        ? Colors.grey
+                        : const Color(0xFF08AD56),
                     borderRadius: BorderRadius.circular(20),
-                    border: _isFollowed > 0 ? Border.all(color: Colors.white) : null,
+                    border: _isFollowed > 0
+                        ? Border.all(color: Colors.white)
+                        : null,
                   ),
                   child: Text(
-                    currentUser!['is_friend'] == 0 ? '关注' : (currentUser!['is_friend'] == 1 ? '已关注' : '朋友'),
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    currentUser!['is_friend'] == 0
+                        ? '关注'
+                        : (currentUser!['is_friend'] == 1 ? '已关注' : '朋友'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
+              if (_currentUserId > 0 && _currentUserId != widget.userId) ...[
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.more_horiz,
+                    color: Colors.black87,
+                    size: 22,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'block') _toggleBlock();
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'block',
+                      child: Text(_isBlocked ? '取消屏蔽' : '屏蔽'),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
+          if (hasRemark) ...[
+            const SizedBox(height: 12),
+            Text(
+              '备注：$remarkRaw',
+              style: const TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+          ],
           const SizedBox(height: 12),
-          Text(
-            '备注：${currentUser!["remark"]}',
-            style: const TextStyle(color: Colors.grey, fontSize: 14),
-          ),
-          const SizedBox(height: 6),
           Row(
             children: [
-              Text('${currentUser!['i_follow'] ?? 0}', style: const TextStyle(color: Colors.black, fontSize: 15)),
-              const Text(' 关注', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              Text(
+                '${currentUser!['i_follow'] ?? 0}',
+                style: const TextStyle(color: Colors.black, fontSize: 15),
+              ),
+              const Text(
+                ' 关注',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
               const SizedBox(width: 15),
-              Text('${currentUser!['follow_me'] ?? 0}', style: const TextStyle(color: Colors.black, fontSize: 15)),
-              const Text(' 粉丝', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              Text(
+                '${currentUser!['follow_me'] ?? 0}',
+                style: const TextStyle(color: Colors.black, fontSize: 15),
+              ),
+              const Text(
+                ' 粉丝',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -363,15 +535,19 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
   }
 
   Widget _buildAppBarBackground() {
-    final bgUrl = currentUser == null ? '' : (currentUser!['background_url'] ?? '').toString();
+    final bgUrl = currentUser == null
+        ? ''
+        : (currentUser!['background_url'] ?? '').toString();
     final hasBg = bgUrl.isNotEmpty;
     return Container(
       decoration: BoxDecoration(
-        gradient: hasBg ? null : const LinearGradient(
-          colors: [Color(0xFF07C160), Color(0xFF009A4A)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
+        gradient: hasBg
+            ? null
+            : const LinearGradient(
+                colors: [Color(0xFF07C160), Color(0xFF009A4A)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
       ),
       child: hasBg
           ? Stack(
@@ -396,7 +572,6 @@ class _UserInfoState extends ConsumerState<UserInfo> with SingleTickerProviderSt
           : null,
     );
   }
-
 }
 
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -411,13 +586,15 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => tabBar.preferredSize.height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: Colors.white,
-      child: tabBar,
-    );
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Container(color: Colors.white, child: tabBar);
   }
 
   @override
-  bool shouldRebuild(covariant _SliverTabBarDelegate oldDelegate) => tabBar != oldDelegate.tabBar;
+  bool shouldRebuild(covariant _SliverTabBarDelegate oldDelegate) =>
+      tabBar != oldDelegate.tabBar;
 }

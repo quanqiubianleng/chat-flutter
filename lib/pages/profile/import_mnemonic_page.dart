@@ -125,6 +125,8 @@ class _ImportMnemonicPageState extends State<ImportMnemonicPage> {
       final walletAddress = importUser['wallet_address']?.toString() ?? '';
 
       await UserCache.saveToken(importUser['token']);
+      final rt = importUser['refresh_token']?.toString();
+      if (rt != null && rt.isNotEmpty) await UserCache.saveRefreshToken(rt);
       await UserCache.saveUserId(userId);
       await UserCache.saveDid(didId);
 
@@ -147,7 +149,7 @@ class _ImportMnemonicPageState extends State<ImportMnemonicPage> {
       Navigator.pop(context);
       widget.onImportSuccess?.call(); // 触发刷新
       // 3. WebSocket 切换账号
-      ws.switchAccount();
+      await ws.switchAccount();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('已导入 ${importUser["username"] ?? "新账号"}')),

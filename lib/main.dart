@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:education/config/app_config.dart';
+import 'package:education/config/app_env.dart';
 import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/database_helper.dart';
 import 'package:education/providers/user_provider.dart';
@@ -30,6 +31,8 @@ void main() async {
 
   // 初始化连接地址
   await AppConfig.init();
+  final envRaw = kRawEnv.isEmpty ? '<unset>' : kRawEnv;
+  AppLogger.i('[APP_BOOT] envRaw=$envRaw, env=$kAppEnv, reqUrl=${AppConfig.reqUrl}');
 
   // 给 Android 强行换上带 FTS5、Porter Stemmer、JSON1 等全功能的 sqlite3
   if (Platform.isAndroid) {
@@ -46,22 +49,23 @@ void main() async {
 
   runApp(
     ProviderScope(
-      child: const DeBoxApp(),
+      child: const BBTApp(),
     ),
   );
 
 
 }
 
-class DeBoxApp extends ConsumerStatefulWidget {
-  const DeBoxApp({super.key});
+class BBTApp extends ConsumerStatefulWidget {
+  const BBTApp({super.key});
 
   @override
-  ConsumerState<DeBoxApp> createState() => _DeBoxAppState();
+  ConsumerState<BBTApp> createState() => _BBTAppState();
 }
 
-class _DeBoxAppState extends ConsumerState<DeBoxApp> {
-  bool _isLoading = true; // 添加加载状态
+class _BBTAppState extends ConsumerState<BBTApp> {
+  bool _isLoading = true;
+  bool _pendingExpiredPrompt = false;
 
   @override
   void initState() {
@@ -69,40 +73,57 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
     _getAccount();
   }
 
-  /// 获取账号信息。设备号：登录成功后从 userInfo 缓存；未登录时在「设置密码」页首次创建/导入时再获取并缓存。
+  /// 获取账号信息。token 过期时拦截器会自动用 refresh_token 换新 token 并重试，用户无感知。
   Future<void> _getAccount() async {
     final api = UserApi();
-
+    final hadToken = await UserCache.getToken() != null;
     try {
       final userInfo = await api.getUserInfo();
       final info = User.fromMap(userInfo);
-
       await UserCache.saveUserId(info.userId);
       await UserCache.saveDid(info.did);
       await UserCache.saveAvatar(info.avatarUrl);
       await UserCache.saveNickname(info.username);
+      final rt = userInfo['refresh_token']?.toString();
+      if (rt != null && rt.isNotEmpty) await UserCache.saveRefreshToken(rt);
       if (info.deviceNo.isNotEmpty) {
         await UserCache.saveDevice(info.deviceNo);
       }
       AppLogger.d("GET Response: $userInfo");
-
-
-      // 刷新用户provider
       ref.refresh(userProvider);
       ref.refresh(myAvatarProvider);
       ref.refresh(myNicknameProvider);
-
     } on ApiException catch (e) {
-      AppLogger.e('请求业务错误: ${e.message}');
+      if (e.message.contains('登录已过期')) {
+        AppLogger.d('登录已过期，请到个人中心重新验证或切换账号后重试');
+        if (hadToken) _pendingExpiredPrompt = true;
+      } else {
+        AppLogger.e('请求业务错误: ${e.message}');
+      }
     } on DioException catch (e) {
-      AppLogger.e('请求出错: ${e.error}', e);
-      if (e.response != null) {
-        AppLogger.d('响应数据: ${e.response?.data}');
+      if (e.response?.statusCode == 401) {
+        AppLogger.d('Token 已过期，请到个人中心重新验证');
+        if (hadToken) _pendingExpiredPrompt = true;
+      } else {
+        AppLogger.e('请求出错: ${e.error}', e);
+        if (e.response != null) AppLogger.d('响应数据: ${e.response?.data}');
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() => _isLoading = false);
+        if (_pendingExpiredPrompt) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('登录已过期，请到「我的」重新验证或切换账号'),
+                duration: Duration(seconds: 4),
+              ),
+            );
+            setState(() => _pendingExpiredPrompt = false);
+          });
+        }
+      }
     }
   }
 
@@ -169,6 +190,19 @@ class _DeBoxAppState extends ConsumerState<DeBoxApp> {
           elevation: 10,
         ),
         useMaterial3: true,
+        // 全项目 Switch 无边框（去掉外圈/overlay 边框）
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return const Color(0xFF00D1A7);
+            return Colors.grey;
+          }),
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return const Color(0xFF00D1A7).withOpacity(0.5);
+            return Colors.grey.withOpacity(0.3);
+          }),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+        ),
       ),
       home: const MainTabScaffold(),
     );

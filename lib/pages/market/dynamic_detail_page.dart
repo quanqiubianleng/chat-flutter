@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// 动态详情页（DeBox 风格：详情 + 评论列表 + 点赞/收藏/评论）
+/// 动态详情页（BBT 风格：详情 + 评论列表 + 点赞/收藏/评论）
 class DynamicDetailPage extends ConsumerStatefulWidget {
   final int postId;
   final PostInfo? initialPost;

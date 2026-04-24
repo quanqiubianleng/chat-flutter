@@ -1,5 +1,7 @@
 import 'package:education/pages/chat/group/group_nickname_edit.dart';
 import 'package:education/pages/chat/group/group_report.dart';
+import 'package:education/pages/chat/group/group_join_manage_page.dart';
+import 'package:education/pages/chat/group/group_upgrade_plans_page.dart';
 import 'package:education/pages/chat/group/speak_frequency.dart';
 import 'package:flutter/material.dart';
 
@@ -10,7 +12,6 @@ import 'package:education/services/group_service.dart';
 import 'package:education/widgets/chat/group/add_group_member.dart';
 import 'package:education/widgets/chat/group/group_avatar.dart';
 import 'package:education/widgets/chat/group/remove_group_member.dart';
-import 'package:education/widgets/common/plus_minus.dart';
 import '../../../core/global.dart';
 import '../../../core/utils/conversation.dart';
 import '../../../core/websocket/ws_event.dart';
@@ -37,9 +38,9 @@ class GroupSettingsPage extends ConsumerStatefulWidget {
 class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
   bool _newMemberNotify = true; // 新成员加入提醒
   bool _muteNotifications = false; // 消息免打扰
-  bool _pinChat = false;  // 置顶
-  bool _isMute = false;  // 全员禁言
-  bool _restrictAddFriend = false;  // 禁止群成员互加好友
+  bool _pinChat = false; // 置顶
+  bool _isMute = false; // 全员禁言
+  bool _restrictAddFriend = false; // 禁止群成员互加好友
 
   int page = 1;
   int pageSize = 100;
@@ -52,8 +53,8 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
   late int role = 0;
   late int total = 0;
   late String _avatar = "";
-  bool isLoading = true;        // 加载中
-  bool hasError = false;        // 是否出错
+  bool isLoading = true; // 加载中
+  bool hasError = false; // 是否出错
   String? errorMessage;
   GroupInfo? groupInfo;
   String? nicknameInGroup;
@@ -88,7 +89,7 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
 
       final GroupInfo info = GroupInfo.fromJson(response);
       String cAvatar = info.Avatar;
-      if(info.Avatar.isNotEmpty && info.Avatar.contains("、")){
+      if (info.Avatar.isNotEmpty && info.Avatar.contains("、")) {
         cAvatar = "";
       }
 
@@ -114,12 +115,16 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
     });
 
     try {
-      final response = await api.getGroupMembers({"group_id": widget.groupId, "page": page, "page_size": pageSize});
+      final response = await api.getGroupMembers({
+        "group_id": widget.groupId,
+        "page": page,
+        "page_size": pageSize,
+      });
       String? nickname = ref.read(myNicknameProvider).value;
 
       print("loadFriends response");
       print(response);
-      if(response['nickname_in_group'] != ""){
+      if (response['nickname_in_group'] != "") {
         nickname = response['nickname_in_group'];
       }
 
@@ -129,8 +134,8 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
           .map((item) => Friend.fromJson(item as Map<String, dynamic>))
           .toList();
       final List<String> avatars = rawList
-          .take(9)                      // 只取前 9 个元素
-          .map((item) => item['avatar_url'] as String? ?? '')  // 安全取值 + 默认空字符串
+          .take(9) // 只取前 9 个元素
+          .map((item) => item['avatar_url'] as String? ?? '') // 安全取值 + 默认空字符串
           .toList();
       print(avatars);
       members.sort((a, b) => a.username.compareTo(b.username));
@@ -157,32 +162,49 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
 
   // 禁言
   Future<void> _handleSwitch(String req, bool status) async {
-
     List<String> fields = [];
     fields.add("group_id");
     fields.add(req);
     Map<String, dynamic> params = {
       "group_id": widget.groupId,
       req: status ? 0 : 1,
-      "field":  fields
+      "field": fields,
     };
     try {
       final response = await api.updateGroupInfo(params);
 
       print("_updateGroupInfo");
       print(response);
-      if(response['code'] == HttpStatus.success){
+      if (response['code'] == HttpStatus.success) {
         final tempClientMsgId = const Uuid().v4();
         final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
-        final convID = generateTempConversationId(userIdA: 0, userIdB: widget.groupId, isGroup: true);
-        final content = status ? "取消全员禁言" : "开启全员禁言";
-        final type = status ? WSEventType. groupClearMute: WSEventType.groupMute;
+        final convID = generateTempConversationId(
+          userIdA: 0,
+          userIdB: widget.groupId,
+          isGroup: true,
+        );
+        String content = '';
+        String type = WSEventType.systemNotice;
+        if (req == "is_mute") {
+          content = status ? "取消全员禁言" : "开启全员禁言";
+          type = status ? WSEventType.groupClearMute : WSEventType.groupMute;
+        } else if (req == "restrict_add_friend") {
+          content = status ? "关闭群内加好友限制" : "开启群内加好友限制";
+          type = status
+              ? WSEventType.groupRestrictAddFriendOff
+              : WSEventType.groupRestrictAddFriendOn;
+        } else if (req == "show_new_member_tip") {
+          content = status ? "关闭新成员加入提醒" : "开启新成员加入提醒";
+          type = status
+              ? WSEventType.groupNewMemberTipOff
+              : WSEventType.groupNewMemberTipOn;
+        }
         final tempMessage = pb.Event()
           ..clientMsgId = tempClientMsgId
           ..fromUser = Int64(_currentUserId!)
           ..toUser = Int64(widget.groupId)
           ..conversationId = convID
-          ..groupId =  Int64(widget.groupId)
+          ..groupId = Int64(widget.groupId)
           ..delivery = WSDelivery.group
           ..type = type
           ..content = content
@@ -202,16 +224,15 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
           ),
         );
         setState(() {
-          if(req == "is_mute"){
+          if (req == "is_mute") {
             _isMute = !_isMute;
           }
-          if(req == "show_new_member_tip"){
+          if (req == "show_new_member_tip") {
             _newMemberNotify = !_newMemberNotify;
           }
-          if(req == "restrict_add_friend"){
+          if (req == "restrict_add_friend") {
             _restrictAddFriend = !_restrictAddFriend;
           }
-
         });
         return;
       }
@@ -222,13 +243,72 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
           duration: Duration(seconds: 2),
         ),
       );
-
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('发生错误：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('发生错误：$e')));
     }
+  }
+
+  Future<void> _onGroupCapacityTap() async {
+    if (groupInfo == null) return;
+    if (role != 2) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('仅群主可操作')));
+      return;
+    }
+    if (groupInfo!.type != 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Club 群无需扩容')));
+      return;
+    }
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupUpgradePlansPage(
+          groupId: widget.groupId,
+          groupType: groupInfo!.type,
+          role: role,
+          currentMaxMembers: groupInfo!.maxMembers,
+          currentMemberCount: total,
+          initialHighlight: GroupUpgradeHighlight.capacity,
+        ),
+      ),
+    );
+    if (mounted) await _getGroupInfo();
+  }
+
+  Future<void> _onUpgradeClubTap() async {
+    if (groupInfo == null) return;
+    if (role != 2) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('仅群主可操作')));
+      return;
+    }
+    if (groupInfo!.type != 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已是 Club 群')));
+      return;
+    }
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupUpgradePlansPage(
+          groupId: widget.groupId,
+          groupType: groupInfo!.type,
+          role: role,
+          currentMaxMembers: groupInfo!.maxMembers,
+          currentMemberCount: total,
+          initialHighlight: GroupUpgradeHighlight.club,
+        ),
+      ),
+    );
+    if (mounted) await _getGroupInfo();
   }
 
   @override
@@ -240,35 +320,42 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
       appBar: AppBar(
         leading: const BackButton(),
         title: const Text('聊天設置'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: () {},
-          ),
-        ],
+        actions: [IconButton(icon: const Icon(Icons.share), onPressed: () {})],
       ),
       body: ListView(
         children: [
           const Divider(height: 1),
           // 頭像選擇區域
           Container(
-            padding: const EdgeInsets.only(top: 20, bottom: 10, left: 16, right: 16),
+            padding: const EdgeInsets.only(
+              top: 20,
+              bottom: 10,
+              left: 16,
+              right: 16,
+            ),
             color: Colors.white,
             child: GridView.count(
-              shrinkWrap: true,           // 重要！讓它只佔所需高度
+              shrinkWrap: true, // 重要！讓它只佔所需高度
               physics: const NeverScrollableScrollPhysics(), // 禁止內部滾動
-              crossAxisCount: 5,          // ★ 每行放幾個就改這裡 (建議4或5)
-              mainAxisSpacing: 10,        // 垂直間距
-              crossAxisSpacing: 10,       // 水平間距
-              childAspectRatio: 0.75,      // 正方形比例
+              crossAxisCount: 5, // ★ 每行放幾個就改這裡 (建議4或5)
+              mainAxisSpacing: 10, // 垂直間距
+              crossAxisSpacing: 10, // 水平間距
+              childAspectRatio: 0.75, // 正方形比例
               children: [
                 // 动态渲染成员头像（最多显示前 N 个，剩余用“查看更多”）
-                ...memberList.take(7).map((friend) => _buildAvatarOption(
-                  friend.avatarUrl ?? 'https://example.com/default-avatar.png', // 默认头像
-                  friend.username.length > 6
-                      ? '${friend.username.substring(0, 5)}...'
-                      : friend.username, friend.userId
-                )),
+                ...memberList
+                    .take(7)
+                    .map(
+                      (friend) => _buildAvatarOption(
+                        friend.avatarUrl.isNotEmpty
+                            ? friend.avatarUrl
+                            : 'https://example.com/default-avatar.png', // 默认头像
+                        friend.username.length > 6
+                            ? '${friend.username.substring(0, 5)}...'
+                            : friend.username,
+                        friend.userId,
+                      ),
+                    ),
 
                 // role > 0 时显示添加/移除按钮（群主/管理员权限）
                 if (role > 0) ...[
@@ -289,29 +376,42 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
             ),
           ),
 
-          Divider(height: 12, thickness: 8, color: Colors.grey[200],),
+          Divider(height: 12, thickness: 8, color: Colors.grey[200]),
 
-          // 群資料相關
+          // 群資料相關（图片尺寸缩小，圆角与上方成员列表头像一致 8）
           _buildListTile(
             title: '群资料',
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if(_avatar == "") GroupAvatar(avatarUrls: groupAvatar),
-                if(_avatar != "") Image.network(
-                  groupInfo!.Avatar,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    // 加载失败时的占位图（建议加上）
-                    return Image.asset('assets/images/default_avatar.png');
-                  },
-                ),
+                if (_avatar == "")
+                  GroupAvatar(avatarUrls: groupAvatar, size: 44, spacing: 1.5),
+                if (_avatar != "")
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Image.network(
+                        groupInfo!.Avatar,
+                        fit: BoxFit.cover,
+                        width: 44,
+                        height: 44,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Image.asset(
+                            'assets/images/default_avatar.png',
+                            fit: BoxFit.cover,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
                 const Icon(Icons.chevron_right),
               ],
             ),
@@ -324,24 +424,40 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
                     role: role,
                     name: groupInfo!.Name,
                     avatar: groupInfo!.Avatar,
-                    description: groupInfo!.description != "" ? groupInfo!.description : 'MOD很懒，还沒有设置简介哦~',
+                    description: groupInfo!.description != ""
+                        ? groupInfo!.description
+                        : 'MOD很懒，还沒有设置简介哦~',
                     onSaved: _getGroupInfo,
                   ),
                 ),
               );
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildListTile(
             title: '简介',
-            subtitle: groupInfo!.description != "" ? groupInfo!.description : 'MOD很懒，还沒有设置简介哦~',
+            subtitle: groupInfo!.description != ""
+                ? groupInfo!.description
+                : 'MOD很懒，还沒有设置简介哦~',
             trailing: const Icon(Icons.chevron_right),
             onTap: () {},
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildListTile(
             title: '公告',
-            subtitle: groupInfo!.notice != "" ? groupInfo!.notice : 'MOD很懶，还沒有设置简介哦~',
+            subtitle: groupInfo!.notice != ""
+                ? groupInfo!.notice
+                : 'MOD很懶，还沒有设置简介哦~',
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.push(
@@ -350,7 +466,9 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
                   builder: (_) => GroupAnnouncementEditor(
                     groupId: widget.groupId,
                     role: role,
-                    notice: groupInfo!.notice != "" ? groupInfo!.notice : 'MOD很懒，还沒有设置公告哦~',
+                    notice: groupInfo!.notice != ""
+                        ? groupInfo!.notice
+                        : 'MOD很懒，还沒有设置公告哦~',
                     onSaved: _getGroupInfo,
                   ),
                 ),
@@ -365,41 +483,48 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
             title: '启用开票',
             subtitle: '成员可通过该功能反馈',
             value: false,
-            onChanged: (v) => {
-              if(role > 0){
-
-              }
-            },
+            onChanged: (v) => {if (role > 0) {}},
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildSwitchTile(
             title: '新成员加入提醒',
             value: _newMemberNotify,
             onChanged: (v) => {
-              if(role > 0){
-                _handleSwitch("show_new_member_tip", _newMemberNotify),
-              }
+              if (role > 0)
+                {_handleSwitch("show_new_member_tip", _newMemberNotify)},
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildSwitchTile(
             title: '全员禁言',
             value: _isMute,
             onChanged: (v) => {
-              if(role > 0){
-                _handleSwitch("is_mute", _isMute),
-              }
+              if (role > 0) {_handleSwitch("is_mute", _isMute)},
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildSwitchTile(
             title: '群內加好友限制',
             subtitle: '开启后，群成员之间不能互加好友，mod不受影响。',
             value: _restrictAddFriend,
             onChanged: (v) => {
-              if(role > 0){
-                _handleSwitch("restrict_add_friend", _restrictAddFriend),
-              }
+              if (role > 0)
+                {_handleSwitch("restrict_add_friend", _restrictAddFriend)},
             },
           ),
 
@@ -411,23 +536,63 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if(groupInfo!.joinMode == 0) const Text('无条件', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                if(groupInfo!.joinMode == 1) const Text('需审核', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                if(groupInfo!.joinMode == 2) const Text('持仓门控(Token/NFT)', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                if(groupInfo!.joinMode == 3) const Text('邀请制', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                if (groupInfo!.joinMode == 0)
+                  const Text(
+                    '无条件',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                if (groupInfo!.joinMode == 1)
+                  const Text(
+                    '需审核',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                if (groupInfo!.joinMode == 2)
+                  const Text(
+                    '持仓门控(Token/NFT)',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                if (groupInfo!.joinMode == 3)
+                  const Text(
+                    '邀请制',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
                 const Icon(Icons.chevron_right),
               ],
             ),
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GroupJoinManagePage(
+                    groupId: widget.groupId,
+                    role: role,
+                    currentJoinMode: groupInfo!.joinMode,
+                  ),
+                ),
+              ).then((_) => _getGroupInfo());
+            },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildListTile(
             title: '发言頻率',
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if(groupInfo!.speakFrequencyLimit == 0) Text('不限制', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                if(groupInfo!.speakFrequencyLimit > 0) Text('${groupInfo!.speakFrequencyLimit}s', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                if (groupInfo!.speakFrequencyLimit == 0)
+                  Text(
+                    '不限制',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                if (groupInfo!.speakFrequencyLimit > 0)
+                  Text(
+                    '${groupInfo!.speakFrequencyLimit}s',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
                 Icon(Icons.chevron_right),
               ],
             ),
@@ -444,18 +609,24 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
               );
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
 
           _buildSwitchTile(
             title: '自动刪除',
             value: false,
-            onChanged: (v) => {
-              if(role > 0){
-
-              }
-            },
+            onChanged: (v) => {if (role > 0) {}},
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildListTile(
             title: '成员角色管理',
             trailing: const Icon(Icons.chevron_right),
@@ -463,64 +634,91 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => GroupManagerHandle(
-                    groupId: widget.groupId,
-                  ),
+                  builder: (_) => GroupManagerHandle(groupId: widget.groupId),
                 ),
               );
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
-          _buildListTile(
-            title: '群容量',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${groupInfo!.maxMembers}', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                Icon(Icons.chevron_right),
-              ],
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
+          if (groupInfo!.type == 0) ...[
+            _buildListTile(
+              title: '群容量',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$total / ${groupInfo!.maxMembers}',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  Icon(Icons.chevron_right),
+                ],
+              ),
+              subtitle: '群主可链上支付 BBT 扩容',
+              onTap: _onGroupCapacityTap,
             ),
-            subtitle: '任何人可花費BBT進行扩容',
-            onTap: () {},
-          ),
-
-          Divider(height: 12, thickness: 8, color: Colors.grey[200]),
-
-          _buildListTile(
-            title: '升級为Club',
-            subtitle: '解锁更多公域流量',
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
-          ),
-
-          Divider(height: 12, thickness: 8, color: Colors.grey[200]),
+            Divider(
+              height: 1,
+              color: Colors.grey[100],
+              indent: 16,
+              endIndent: 16,
+            ),
+            _buildListTile(
+              title: '升級为Club',
+              subtitle: '链上支付 BBT 后升级',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _onUpgradeClubTap,
+            ),
+            Divider(height: 12, thickness: 8, color: Colors.grey[200]),
+          ] else ...[
+            _buildListTile(
+              title: 'Club 群',
+              subtitle: '当前成员 $total / 上限 ${groupInfo!.maxMembers}',
+              trailing: const SizedBox.shrink(),
+              onTap: null,
+            ),
+            Divider(height: 12, thickness: 8, color: Colors.grey[200]),
+          ],
 
           _buildSwitchTile(
             title: '置頂',
             value: _pinChat,
             onChanged: (v) => {
-              if(role > 0){
-                setState(() => _pinChat = v)
-              }
+              if (role > 0) {setState(() => _pinChat = v)},
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildSwitchTile(
             title: '消息免打扰',
             value: _muteNotifications,
             onChanged: (v) => {
-              if(role > 0){
-                setState(() => _muteNotifications = v)
-              }
+              if (role > 0) {setState(() => _muteNotifications = v)},
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildListTile(
             title: '我在本群的昵称',
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(nicknameInGroup ?? '未設定', style: TextStyle(color: Colors.grey, fontSize: 13),),
+                Text(
+                  nicknameInGroup ?? '未設定',
+                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                ),
                 Icon(Icons.chevron_right),
               ],
             ),
@@ -535,14 +733,17 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => GroupReportPage(
-                    groupId: groupInfo!.groupId,
-                  ),
+                  builder: (_) => GroupReportPage(groupId: groupInfo!.groupId),
                 ),
               );
             },
           ),
-          Divider(height: 1, color: Colors.grey[100], indent: 16, endIndent: 16),
+          Divider(
+            height: 1,
+            color: Colors.grey[100],
+            indent: 16,
+            endIndent: 16,
+          ),
           _buildListTile(
             title: '清除历史消息',
             trailing: const Icon(Icons.chevron_right),
@@ -571,76 +772,78 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
 
   Widget _buildAvatarOption(String imageUrl, String text, int userId) {
     return GestureDetector(
-        onTap: () {
-          // TODO: 跳转个人信息页
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => UserInfo(
-                userId: userId,
-                // 你可以根据需要传更多字段
-              ),
-            ),
+      onTap: () {
+        if (_restrictAddFriend) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('加好友限制已开启')),
           );
-        },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 图片容器
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: Colors.grey[200], // 固定背景色
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8), // 比容器小2px
-                child: imageUrl.isNotEmpty
-                    ? Image.network(
-                  imageUrl,
-                  width: 52,
-                  height: 52,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                            : null,
-                      ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return Center(
+          return;
+        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserInfo(
+              userId: userId,
+              // 你可以根据需要传更多字段
+            ),
+          ),
+        );
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 图片容器
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.grey[200], // 固定背景色
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8), // 比容器小2px
+              child: imageUrl.isNotEmpty
+                  ? Image.network(
+                      imageUrl,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Center(
+                          child: Icon(
+                            Icons.broken_image,
+                            size: 24,
+                            color: Colors.grey[400],
+                          ),
+                        );
+                      },
+                    )
+                  : Center(
                       child: Icon(
-                        Icons.broken_image,
-                        size: 24,
+                        Icons.person,
+                        size: 28,
                         color: Colors.grey[400],
                       ),
-                    );
-                  },
-                )
-                    : Center(
-                  child: Icon(
-                    Icons.person,
-                    size: 28,
-                    color: Colors.grey[400],
-                  ),
-                ),
-              ),
+                    ),
             ),
-            const SizedBox(height: 6),
-            // 文字标签
-            Text(
-              text,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        )
+          ),
+          const SizedBox(height: 6),
+          // 文字标签
+          Text(text, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
     );
   }
 
@@ -650,7 +853,8 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AddGroupMember(groupId: widget.groupId,onSaved: _loadMembers,),
+            builder: (context) =>
+                AddGroupMember(groupId: widget.groupId, onSaved: _loadMembers),
           ),
         );
       },
@@ -669,7 +873,7 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
           const SizedBox(height: 6),
           const Text(''),
         ],
-      )
+      ),
     );
   }
 
@@ -679,7 +883,10 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => RemoveGroupMember(groupId: widget.groupId,onSaved: _loadMembers,),
+            builder: (context) => RemoveGroupMember(
+              groupId: widget.groupId,
+              onSaved: _loadMembers,
+            ),
           ),
         );
       },
@@ -698,7 +905,7 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
           const SizedBox(height: 6),
           const Text(''),
         ],
-      )
+      ),
     );
   }
 
@@ -710,36 +917,38 @@ class _GroupSettingsPageState extends ConsumerState<GroupSettingsPage> {
     Color? textColor,
   }) {
     return ListTile(
-      title: Text(
-        title,
-        style: TextStyle(color: textColor ?? Colors.black87),
-      ),
+      title: Text(title, style: TextStyle(color: textColor ?? Colors.black87)),
       subtitle: subtitle != null
           ? Text(
-        subtitle,
-        style: const TextStyle(color: Colors.grey, fontSize: 13),
-      )
+              subtitle,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            )
           : null,
-      trailing: trailing, 
+      trailing: trailing,
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
     );
   }
 
-  Widget _buildSwitchTile({required String title, String? subtitle, required bool value, required ValueChanged<bool> onChanged,}) {
+  Widget _buildSwitchTile({
+    required String title,
+    String? subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
     return SwitchListTile(
       title: Text(title),
       subtitle: subtitle != null
           ? Text(
-        subtitle,
-        style: const TextStyle(color: Colors.grey, fontSize: 13),
-      )
+              subtitle,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            )
           : null,
       value: value,
       onChanged: onChanged,
       activeColor: Colors.green,
-      inactiveTrackColor: Colors.grey.shade200,     // 關閉時軌道顏色（淡一點）
-      inactiveThumbColor: Colors.grey[350],     // 關閉時拇指顏色（淡一點）
+      inactiveTrackColor: Colors.grey.shade200, // 關閉時軌道顏色（淡一點）
+      inactiveThumbColor: Colors.grey[350], // 關閉時拇指顏色（淡一點）
       // 關鍵：控制邊框顏色（track outline）
       trackOutlineColor: MaterialStateProperty.all(Colors.transparent),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

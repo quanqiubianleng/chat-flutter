@@ -18,7 +18,10 @@ class GroupInfo {
   final String updatedAt;       // 更新时间
   final int mutedUntil;       // 禁言截止时间
   final int role;       // 角色：0=普通成员, 1=管理员(MOD), 2=群主(冗余，便于查询)
-  // 根据你的实际接口返回字段继续添加...
+  /// 当前成员数（资料页）
+  final int memberCount;
+  /// 持仓门控规则（与网关 gate_rules 一致）
+  final List<Map<String, dynamic>> gateRules;
 
   GroupInfo({
     required this.groupId,
@@ -39,29 +42,41 @@ class GroupInfo {
     this.updatedAt = '',
     this.mutedUntil = 0,
     this.role = 0,
+    this.memberCount = 0,
+    this.gateRules = const [],
   });
+
+  static int _i(dynamic v, [int d = 0]) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? d;
+  }
 
   // 从后端返回的 Map 转为 Group 对象
   factory GroupInfo.fromJson(Map<String, dynamic> json) {
+    final rulesRaw = json['gate_rules'] as List<dynamic>? ?? [];
+    final rules = rulesRaw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
     return GroupInfo(
-      groupId: json['group_id'] as int,
-      ownerUserId: json['owner_user_id'] as int,
+      groupId: _i(json['group_id']),
+      ownerUserId: _i(json['owner_user_id']),
       Name: (json['name'] ?? '') as String,
       Avatar: (json['avatar'] ?? '') as String,
       description: (json['description'] ?? '') as String,
       notice: (json['notice'] ?? '') as String,
-      type: (json['type'] ?? '') as int,
-      joinMode: (json['join_mode'] ?? '') as int,
-      maxMembers: (json['max_members'] ?? '') as int,
-      speakFrequencyLimit: (json['speak_frequency_limit'] ?? '') as int,
-      restrictAddFriend: (json['restrict_add_friend'] ?? '') as int,
-      status: (json['status'] ?? '') as int,
-      isMute: (json['is_mute'] ?? '') as int,
-      showNewMemberTip: (json['show_new_member_tip'] ?? '') as int,
+      type: _i(json['type']),
+      joinMode: _i(json['join_mode']),
+      maxMembers: _i(json['max_members']),
+      speakFrequencyLimit: _i(json['speak_frequency_limit']),
+      restrictAddFriend: _i(json['restrict_add_friend']),
+      status: _i(json['status']),
+      isMute: _i(json['is_mute']),
+      showNewMemberTip: _i(json['show_new_member_tip']),
       createdAt: (json['created_at'] ?? '') as String,
       updatedAt: (json['updated_at'] ?? '') as String,
-      mutedUntil: (json['muted_until'] ?? '') as int,
-      role: (json['role'] ?? '') as int,
+      mutedUntil: _i(json['muted_until']),
+      role: _i(json['role']),
+      memberCount: _i(json['member_count']),
+      gateRules: rules,
     );
   }
 }

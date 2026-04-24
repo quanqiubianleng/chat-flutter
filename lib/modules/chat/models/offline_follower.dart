@@ -36,7 +36,8 @@ Future<void> getOfflineFollowerList([int? userId]) async {
     AppLogger.d('✅ 关注数据同步完成(getFollowerData): 我关注=${following.length}, 关注我=${followers.length}');
   } catch (e, st) {
     AppLogger.e('getOfflineFollowerList 失败', e, st);
-    rethrow;
+    // 该流程属于登录后的后台同步，失败不应中断主流程
+    return;
   }
 }
 

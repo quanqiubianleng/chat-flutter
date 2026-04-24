@@ -1,4 +1,5 @@
 // 文件：widgets/follower/official_reward_card.dart
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:education/core/utils/logger.dart';
 import 'package:flutter/material.dart';
 
@@ -47,25 +48,40 @@ class OfficialRewardCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // 下面保持不变
+          // 下面保持不变（使用 CachedNetworkImage 避免握手失败时抛 HandshakeException）
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              image: const DecorationImage(
-                image: NetworkImage(
-                  "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
-                ),
-                fit: BoxFit.cover,
-              ),
+              color: Colors.grey.shade200,
             ),
-            child: Column(
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                Image.network(
-                  "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
-                  width: 120,
+                CachedNetworkImage(
+                  imageUrl: "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => const SizedBox.shrink(),
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
                 ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(width: 120, height: 120, color: Colors.grey.shade300),
+                      errorWidget: (_, __, ___) => Container(
+                        width: 120,
+                        height: 120,
+                        color: Colors.grey.shade300,
+                        child: const Icon(Icons.person, size: 48, color: Colors.grey),
+                      ),
+                    ),
                 const SizedBox(height: 20),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -123,6 +139,8 @@ class OfficialRewardCard extends StatelessWidget {
                     ),
                   ],
                 ),
+              ],
+            ),
               ],
             ),
           ),

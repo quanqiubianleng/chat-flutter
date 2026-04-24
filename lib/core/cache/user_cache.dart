@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class UserCache {
   static const _tokenKey = 'user_token';
+  static const _refreshTokenKey = 'user_refresh_token';
   static const _userIdKey = 'user_id';
   static const _deviceNoKey = 'device_no';
   static const _didIdKey = 'did_id';
@@ -19,6 +20,29 @@ class UserCache {
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
+  }
+
+  static Future<void> saveRefreshToken(String refreshToken) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_refreshTokenKey, refreshToken);
+  }
+
+  static Future<String?> getRefreshToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_refreshTokenKey);
+  }
+
+  /// 仅清除 access token（保留 refresh_token），用于调试「静默续登」
+  static Future<void> clearTokenOnly() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+  }
+
+  /// 会话失效：清除 access + refresh，保留本地 userId 等资料便于用户回到「我的」重新验证
+  static Future<void> clearAuthTokens() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_refreshTokenKey);
   }
 
   static Future<void> saveNickname(String nickname) async {

@@ -5,6 +5,7 @@ import 'package:education/core/global.dart';
 import 'package:education/core/sqlite/wallet_repository.dart';
 import 'package:education/services/user_service.dart';
 import 'package:education/widgets/account/backup_mnemonic_sheet.dart';
+import 'package:education/widgets/account/wallet_creating_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -29,7 +30,7 @@ class CreateWalletSheet {
 class _CreateWalletContent extends ConsumerStatefulWidget {
   final String password;
   final VoidCallback onSuccess;
-  _CreateWalletContent({required this.password, required this.onSuccess});
+  const _CreateWalletContent({required this.password, required this.onSuccess});
 
   @override
   ConsumerState<_CreateWalletContent> createState() => _CreateWalletContentState();
@@ -39,82 +40,83 @@ class _CreateWalletContentState extends ConsumerState<_CreateWalletContent> {
   bool _loading = false;
   final api = UserApi();
 
+  Future<({String mnemonic, String address, String didId})> _performCreateWallet() async {
+    final deviceNo = await UserCache.getDevice() ?? '';
+    if (deviceNo.isEmpty) {
+      throw StateError('设备号未就绪，请先设置密码页完成');
+    }
+    final repo = WalletRepository(Global.db);
+    String pwd = widget.password.isNotEmpty ? widget.password : '';
+    if (pwd.isEmpty || pwd.length < 6) {
+      pwd = await repo.getDevicePassword() ?? '';
+    }
+    final pwdForApi = pwd.length >= 6 ? pwd : '...';
+    final data = await api.createWallet({
+      'did_id': '...',
+      'password': pwdForApi,
+      'type': 1,
+      'deviceNo': deviceNo,
+    });
+    final String mnemonic = data['mnemonic'] as String? ?? '';
+    final String address = data['wallet_address'] as String? ?? '';
+    final String didId = data['did_id'] as String? ?? '';
+    final int userId = (data['userId'] as num?)?.toInt() ?? 0;
+
+    if (data['token'] != null) {
+      await UserCache.saveToken(data['token'] as String);
+    }
+    if (data['refresh_token'] != null && (data['refresh_token'] as String).isNotEmpty) {
+      await UserCache.saveRefreshToken(data['refresh_token'] as String);
+    }
+    await UserCache.saveUserId(userId);
+    await UserCache.saveDid(didId);
+
+    if (mnemonic.isNotEmpty && pwd.length >= 6) {
+      try {
+        await repo.saveEncryptedMnemonic(
+          userId: userId,
+          didId: didId,
+          walletAddress: address,
+          mnemonic: mnemonic,
+          password: pwd,
+          deviceNo: deviceNo,
+        );
+      } catch (e) {
+        debugPrint('WalletRepository saveEncryptedMnemonic: $e');
+      }
+    }
+
+    if (mounted) {
+      final _ = ref.refresh(userProvider);
+      ref.read(feedRefreshTriggerProvider.notifier).state++;
+    }
+
+    await ws.switchAccount();
+
+    return (mnemonic: mnemonic, address: address, didId: didId);
+  }
+
   Future<void> _createWallet() async {
     if (_loading) return;
     setState(() => _loading = true);
 
     try {
-      final deviceNo = await UserCache.getDevice() ?? '';
-      if (deviceNo.isEmpty) {
-        Fluttertoast.showToast(msg: '设备号未就绪，请先设置密码页完成');
-        setState(() => _loading = false);
-        return;
-      }
-      final repo = WalletRepository(Global.db);
-      // 优先使用传入密码，否则从本地已保存的账号获取（当前设备统一密码）
-      String pwd = widget.password.isNotEmpty ? widget.password : '';
-      if (pwd.isEmpty || pwd.length < 6) {
-        pwd = await repo.getDevicePassword() ?? '';
-      }
-      final pwdForApi = pwd.length >= 6 ? pwd : '...';
-      final data = await api.createWallet({
-        'did_id': '...',
-        'password': pwdForApi,
-        'type': 1,
-        'deviceNo': deviceNo,
-      });
-      final String mnemonic = data['mnemonic'] as String? ?? '';
-      final String address = data['wallet_address'] as String? ?? '';
-      final String didId = data['did_id'] as String? ?? '';
-      final int userId = (data['userId'] as num?)?.toInt() ?? 0;
-
-      // 创建成功：保存新凭证并切换账号
-      if (data['token'] != null) {
-        await UserCache.saveToken(data['token'] as String);
-      }
-      await UserCache.saveUserId(userId);
-      await UserCache.saveDid(didId);
-
-      // 加密并存储助记词到本地（使用上面解析出的 pwd）
-      if (mnemonic.isNotEmpty && pwd.length >= 6) {
-        try {
-          await repo.saveEncryptedMnemonic(
-            userId: userId,
-            didId: didId,
-            walletAddress: address,
-            mnemonic: mnemonic,
-            password: pwd,
-            deviceNo: deviceNo,
-          );
-        } catch (e) {
-          // 存储失败不影响主流程，仅记录
-          debugPrint('WalletRepository saveEncryptedMnemonic: $e');
-        }
-      }
-
-      // 2. 刷新全局用户状态
-      // ignore: use_build_context_synchronously
-      if (mounted) {
-        ref.refresh(userProvider);
-        ref.read(feedRefreshTriggerProvider.notifier).state++; // 新账号登录后刷新动态列表
-      }
-
-      // 3. WebSocket 切换账号
-      ws.switchAccount();
-
-      // ============ 结束修复 ============
-
-      // 成功 → 跳转到备份页面
-      Navigator.pop(context); // 关闭当前弹窗
+      final r = await WalletCreatingSheet.run<({String mnemonic, String address, String didId})>(
+        context,
+        task: _performCreateWallet,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
       BackupMnemonicSheet.show(
         context,
-        mnemonic: mnemonic,
-        address: address,
-        didId: didId,
-        onFinalSuccess: widget.onSuccess, // 最终完成才刷新
+        mnemonic: r.mnemonic,
+        address: r.address,
+        didId: r.didId,
+        onFinalSuccess: widget.onSuccess,
       );
     } catch (e) {
-      Fluttertoast.showToast(msg: "创建失败：$e");
+      final msg = e is StateError ? e.message : '$e';
+      Fluttertoast.showToast(msg: e is StateError ? msg : '创建失败：$e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }

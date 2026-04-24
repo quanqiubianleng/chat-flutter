@@ -16,7 +16,7 @@ class AssetGrid extends StatelessWidget {
       {"i": Icons.token, "t": "Token", "c": const Color(0xFF00C853), "id": "token"},
       {"i": Icons.image, "t": "NFT", "c": const Color(0xFFFF8F00), "id": "nft"},
       {"i": Icons.eco, "t": "BBT", "c": const Color(0xFF00D1A7), "id": "bbt"},
-      {"i": Icons.vpn_key, "t": "Key", "c": const Color(0xFF5C6BC0), "id": "key"},
+      // {"i": Icons.vpn_key, "t": "Key", "c": const Color(0xFF5C6BC0), "id": "key"},
     ];
 
     return Container(
@@ -97,9 +97,18 @@ class AssetGrid extends StatelessWidget {
           );
           break;
         case 'bbt':
+          final addr = walletAddress ?? '';
+          if (addr.isEmpty || !addr.startsWith('0x')) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('请先绑定钱包地址')),
+            );
+            return;
+          }
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const BbtCenterPage()),
+            MaterialPageRoute(
+              builder: (_) => BbtCenterPage(walletAddress: addr),
+            ),
           );
           break;
         case 'key':

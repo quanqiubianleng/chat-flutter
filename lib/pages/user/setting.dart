@@ -1,6 +1,17 @@
+import 'package:education/config/app_config.dart';
+import 'package:education/core/cache/user_cache.dart';
 import 'package:education/pages/profile/account_management_page.dart';
+import 'package:education/services/api_service.dart';
+import 'package:education/services/group_service.dart';
+import 'package:education/pages/user/about_us_page.dart';
+import 'package:education/pages/user/feedback_page.dart';
 import 'package:education/pages/user/payment_security_page.dart';
+import 'package:education/pages/user/privacy_page.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+
+/// 仅该用户可在设置里看到「初始化 BBT 官方群」
+const int _kOfficialGroupInitVisibleUserId = 151;
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -66,16 +77,30 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 24),
 
           // 第二组 - 隐私与反馈
-          const _SettingsItem(
+          _SettingsItem(
             icon: Icons.privacy_tip_outlined,
             title: '隐私',
-            trailing: _RightArrow(),
+            trailing: const _RightArrow(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PrivacyPage()),
+              );
+            },
           ),
           Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
-          const _SettingsItem(
+          _SettingsItem(
             icon: Icons.sentiment_dissatisfied_outlined,
             title: '问题反馈',
-            trailing: _RightArrow(),
+            trailing: const _RightArrow(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const FeedbackPage(),
+                ),
+              );
+            },
           ),
           Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
           const _SettingsItem(
@@ -84,13 +109,64 @@ class SettingsPage extends StatelessWidget {
             trailing: _RightArrow(),
           ),
           Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
-          const _SettingsItem(
+          _SettingsItem(
             icon: Icons.info_outline_rounded,
             title: '关于我们',
-            trailing: _RightArrow(),
+            trailing: const _RightArrow(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AboutUsPage(),
+                ),
+              );
+            },
           ),
 
           const SizedBox(height: 24),
+
+          // 【调试】模拟 Token 过期，用于测试静默续登
+          if (AppConfig.isDebug) ...[
+            _SettingsItem(
+              icon: Icons.bug_report_outlined,
+              title: '【调试】模拟 Token 过期',
+              trailing: const _RightArrow(),
+              onTap: () async {
+                await UserCache.clearTokenOnly();
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  Fluttertoast.showToast(
+                    msg: '已清除 access token，请点击「切换账号」或做任意会请求接口的操作，观察是否静默续登',
+                    toastLength: Toast.LENGTH_LONG,
+                  );
+                }
+              },
+            ),
+            Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
+          ],
+
+          // 运维：仅 userId=151 可见（调用 POST /v1/group/initOfficial）
+          FutureBuilder<int?>(
+            future: UserCache.getUserId(),
+            builder: (context, snapshot) {
+              if (snapshot.data != _kOfficialGroupInitVisibleUserId) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _SettingsItem(
+                    icon: Icons.group_rounded,
+                    title: '初始化 BBT 官方群',
+                    subtitle: '需已登录；网关需配置 OfficialGroupOwnerUserId',
+                    trailing: const _RightArrow(),
+                    onTap: () => _onInitOfficialGroupTap(context),
+                  ),
+                  Divider(height: 1, color: Colors.grey[200], indent: 16, endIndent: 16),
+                ],
+              );
+            },
+          ),
 
           // 清除缓存（独立一项）
           const _SettingsItem(
@@ -103,6 +179,77 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+Future<void> _onInitOfficialGroupTap(BuildContext context) async {
+  final uid = await UserCache.getUserId();
+  if (uid != _kOfficialGroupInitVisibleUserId) {
+    Fluttertoast.showToast(msg: '无权限执行此操作');
+    return;
+  }
+
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('初始化 BBT 官方群'),
+      content: const Text(
+        '将请求网关接口 POST /v1/group/initOfficial。\n\n'
+        '请确认网关 yaml 已配置 OfficialGroupOwnerUserId，且 OfficialGroupId 为 0（未创建过）。\n\n'
+        '成功后请把返回的 group_id 写入网关 OfficialGroupId 并重启网关。',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => const Center(child: CircularProgressIndicator()),
+  );
+
+  try {
+    final map = await GroupApi().initOfficialGroup();
+    if (context.mounted) Navigator.of(context).pop();
+
+    final code = map['code'];
+    final msg = map['msg']?.toString() ?? '';
+    final groupId = map['group_id'];
+    final convId = map['conversation_id']?.toString() ?? '';
+    final exists = map['already_exists'] == true;
+
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(code == 200 ? '成功' : '提示'),
+        content: SingleChildScrollView(
+          child: Text(
+            '$msg\n\n'
+            '${groupId != null ? 'group_id: $groupId\n' : ''}'
+            '${convId.isNotEmpty ? 'conversation_id: $convId\n' : ''}'
+            '${exists ? '\n（已配置过官方群，未重复创建）' : ''}',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+        ],
+      ),
+    );
+  } on ApiException catch (e) {
+    if (context.mounted) Navigator.of(context).pop();
+    if (context.mounted) {
+      Fluttertoast.showToast(msg: e.message, toastLength: Toast.LENGTH_LONG);
+    }
+  } catch (e) {
+    if (context.mounted) Navigator.of(context).pop();
+    if (context.mounted) {
+      Fluttertoast.showToast(msg: '请求失败: $e', toastLength: Toast.LENGTH_LONG);
+    }
   }
 }
 
@@ -132,6 +279,7 @@ class _SectionTitle extends StatelessWidget {
 class _SettingsItem extends StatelessWidget {
   final IconData icon;
   final String title;
+  final String? subtitle;
   final Widget trailing;
   final VoidCallback? onTap;
 
@@ -139,6 +287,7 @@ class _SettingsItem extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.trailing,
+    this.subtitle,
     this.onTap,
   });
 
@@ -159,6 +308,15 @@ class _SettingsItem extends StatelessWidget {
             fontSize: 16,
           ),
         ),
+        subtitle: subtitle == null || subtitle!.isEmpty
+            ? null
+            : Text(
+                subtitle!,
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
         trailing: trailing,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         onTap: onTap,

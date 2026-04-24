@@ -1,18 +1,18 @@
-// 文件：widgets/follower/debox_floating_menu.dart
+// 文件：widgets/follower/bbt_floating_menu.dart
 import 'dart:ui';
 import 'package:education/pages/market/publish_dynamic_page.dart';
 import 'package:education/providers/feed_refresh_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class DeBoxFloatingMenu extends ConsumerStatefulWidget {
-  const DeBoxFloatingMenu({super.key});
+class BBTFloatingMenu extends ConsumerStatefulWidget {
+  const BBTFloatingMenu({super.key});
 
   @override
-  ConsumerState<DeBoxFloatingMenu> createState() => _DeBoxFloatingMenuState();
+  ConsumerState<BBTFloatingMenu> createState() => _BBTFloatingMenuState();
 }
 
-class _DeBoxFloatingMenuState extends ConsumerState<DeBoxFloatingMenu>
+class _BBTFloatingMenuState extends ConsumerState<BBTFloatingMenu>
     with SingleTickerProviderStateMixin {
   bool _isOpen = false;
   late final AnimationController _controller;
@@ -63,7 +63,6 @@ class _DeBoxFloatingMenuState extends ConsumerState<DeBoxFloatingMenu>
               ),
             ),
           ),
-          
 
         // 点击空白关闭
         if (_isOpen)
@@ -92,13 +91,13 @@ class _DeBoxFloatingMenuState extends ConsumerState<DeBoxFloatingMenu>
                   child: AnimatedOpacity(
                     opacity: _isOpen ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 220),
-                    child:                     _isOpen
+                    child: _isOpen
                         ? Column(
                             children: [
-                              _menuItem("抽奖", Icons.card_giftcard, const Color(0xFFFF3B30), onTap: () {}),
+                              /*_menuItem("抽奖", Icons.card_giftcard, const Color(0xFFFF3B30), onTap: () {}),
                               _menuItem("空投", Icons.flight_land, const Color(0xFF5C6BC0), onTap: () {}),
                               _menuItem("Meetup", Icons.record_voice_over, const Color(0xFF8E24AA), onTap: () {}),
-                              _menuItem("Live", Icons.videocam, const Color(0xFF00C853), onTap: () {}),
+                              _menuItem("Live", Icons.videocam, const Color(0xFF00C853), onTap: () {}),*/
                               _menuItem("发布到动态", Icons.edit_note, const Color(0xFF00C853), onTap: () {
                                 _toggle();
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => const PublishDynamicPage()))
@@ -139,7 +138,6 @@ class _DeBoxFloatingMenuState extends ConsumerState<DeBoxFloatingMenu>
     );
   }
 
-  // 终极修复：图标完全贴右边！
   Widget _menuItem(String title, IconData icon, Color iconColor, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,

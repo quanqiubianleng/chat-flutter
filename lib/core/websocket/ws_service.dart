@@ -169,10 +169,20 @@ class WSService {
     send(event);
     AppLogger.d("已发送 switch_user (userId=$userId, did=$did)");
 
-    // 用本次 switch_user 的 userId 拉离线消息并写 sync_cursor，避免多账号错乱
-    await syncAllOfflineMessages(userId > 0 ? userId : null);
-    // 同步关注数据
-    await getOfflineFollowerList(userId > 0 ? userId : null);
+    // 关键链路优先：先拉离线消息；非关键链路（关注同步）延后执行，减少启动瞬时并发
+    try {
+      await syncAllOfflineMessages(userId > 0 ? userId : null);
+    } catch (e, st) {
+      AppLogger.e('switch_user 后离线消息同步失败', e, st);
+    }
+    // 启动节流：给网关一个短暂缓冲，避免启动阶段请求过于密集
+    await Future<void>.delayed(const Duration(milliseconds: 800));
+    // 非关键链路：关注数据同步
+    try {
+      await getOfflineFollowerList(userId > 0 ? userId : null);
+    } catch (e, st) {
+      AppLogger.e('switch_user 后关注数据同步失败', e, st);
+    }
   }
 
   // 公开的切换账号方法（不重连，直接发 switch_user）

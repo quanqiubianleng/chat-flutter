@@ -1,6 +1,13 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
+import 'package:education/config/app_config.dart';
+import 'package:education/config/known_tokens.dart';
 import 'package:education/services/alchemy_service.dart';
 import 'package:education/widgets/common/empty_state_view.dart';
+import 'package:education/widgets/common/token_avatar.dart';
 
 /// 网络选项（与图二一致：BNB Chain 选中黄色，其余灰色）
 class TransferNetworkOption {
@@ -9,22 +16,29 @@ class TransferNetworkOption {
   final Widget? icon;
   /// 对应 Alchemy 链 id，空表示暂不支持拉取
   final String? alchemyChain;
+  /// 用于 KnownTokens 的链 key（如 x-layer）
+  final String knownTokensChain;
 
   const TransferNetworkOption({
     required this.id,
     required this.name,
     this.icon,
     this.alchemyChain,
+    required this.knownTokensChain,
   });
 }
 
-/// 代币选项
+/// 代币选项（与 token 页展示一致：符号、格式化余额、USD）
 class TransferTokenOption {
   final String symbol;
   final String name;
   final String balance;
   final String usdValue;
   final Widget? logo;
+  final String balanceWeiStr;
+  final int decimals;
+  final String? contractAddress;
+  final Color iconColor;
 
   const TransferTokenOption({
     required this.symbol,
@@ -32,15 +46,29 @@ class TransferTokenOption {
     this.balance = '0',
     this.usdValue = '\$0',
     this.logo,
+    required this.balanceWeiStr,
+    required this.decimals,
+    this.contractAddress,
+    this.iconColor = Colors.grey,
   });
 }
 
-/// 选择转账代币弹窗：标题、搜索、网络横向标签、代币列表（与图二一致）；切换网络时按链拉取代币
+/// 选择转账代币弹窗：标题、搜索、网络横向标签、代币列表（与 token 页一致）；切换网络时按链拉取代币
 class TransferTokenSheet extends StatefulWidget {
   final String walletAddress;
   /// 再次打开弹窗时恢复选中的网络（如 'eth-mainnet'）
   final String initialNetworkId;
-  final void Function(String networkId, String networkName, String tokenSymbol) onSelect;
+  /// 选择后回调：networkId, networkName, tokenSymbol, balanceWeiStr, decimals, contractAddress(null=原生), formattedBalance, formattedUsd
+  final void Function(
+    String networkId,
+    String networkName,
+    String tokenSymbol,
+    String balanceWeiStr,
+    int decimals,
+    String? contractAddress,
+    String formattedBalance,
+    String formattedUsd,
+  ) onSelect;
 
   const TransferTokenSheet({
     super.key,
@@ -58,17 +86,26 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
   final AlchemyService _alchemy = AlchemyService();
 
   static const List<TransferNetworkOption> _networks = [
-    TransferNetworkOption(id: 'bnb-mainnet', name: 'BNB Chain', alchemyChain: AlchemyService.bnbMainnet),
-    TransferNetworkOption(id: 'xlayer', name: 'X Layer', alchemyChain: null),
-    TransferNetworkOption(id: 'base-mainnet', name: 'Base', alchemyChain: 'base-mainnet'),
-    TransferNetworkOption(id: 'eth-mainnet', name: 'Ethereum', alchemyChain: AlchemyService.ethMainnet),
+    TransferNetworkOption(id: 'bnb-mainnet', name: 'BNB Chain', alchemyChain: AlchemyService.bnbMainnet, knownTokensChain: KnownTokens.bnbMainnet),
+    TransferNetworkOption(id: 'x-layer', name: 'X Layer', alchemyChain: 'x-layer', knownTokensChain: KnownTokens.xLayer),
+    TransferNetworkOption(id: 'base-mainnet', name: 'Base', alchemyChain: 'base-mainnet', knownTokensChain: KnownTokens.baseMainnet),
+    TransferNetworkOption(id: 'eth-mainnet', name: 'Ethereum', alchemyChain: AlchemyService.ethMainnet, knownTokensChain: KnownTokens.ethMainnet),
   ];
+
+  static Color _iconColorForChain(String? alchemyChain) {
+    if (alchemyChain == AlchemyService.bnbMainnet) return const Color(0xFFF3BA2F);
+    if (alchemyChain == AlchemyService.ethMainnet) return const Color(0xFF627EEA);
+    if (alchemyChain == 'base-mainnet') return const Color(0xFF0052FF);
+    return Colors.grey;
+  }
 
   late int _selectedNetworkIndex;
   List<TransferTokenOption> _tokens = [];
   List<TransferTokenOption> _filteredTokens = [];
   bool _loading = false;
   String? _loadError;
+  double? _ethPrice;
+  double? _bnbPrice;
 
   @override
   void initState() {
@@ -81,13 +118,74 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
 
   String _nativeSymbolForChain(String? alchemyChain) {
     if (alchemyChain == AlchemyService.bnbMainnet) return 'BNB';
-    if (alchemyChain == AlchemyService.ethMainnet || alchemyChain == 'base-mainnet') return 'ETH';
+    if (alchemyChain == AlchemyService.ethMainnet || alchemyChain == 'base-mainnet' || alchemyChain == 'x-layer') return 'ETH';
     return 'ETH';
+  }
+
+  Future<void> _fetchPrices() async {
+    final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 10)));
+    if (AppConfig.isDebug) {
+      dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback = (_, __, ___) => true;
+          return client;
+        },
+      );
+    }
+    double? ethPrice;
+    double? bnbPrice;
+    try {
+      final ethResp = await dio.get('https://api.binance.com/api/v3/ticker/price', queryParameters: {'symbol': 'ETHUSDT'});
+      final bnbResp = await dio.get('https://api.binance.com/api/v3/ticker/price', queryParameters: {'symbol': 'BNBUSDT'});
+      final ethP = ethResp.data is Map ? (ethResp.data as Map)['price'] : null;
+      final bnbP = bnbResp.data is Map ? (bnbResp.data as Map)['price'] : null;
+      if (ethP != null) ethPrice = (ethP is num ? ethP : double.tryParse(ethP.toString()))?.toDouble();
+      if (bnbP != null) bnbPrice = (bnbP is num ? bnbP : double.tryParse(bnbP.toString()))?.toDouble();
+    } catch (_) {}
+    if (ethPrice == null || bnbPrice == null) {
+      try {
+        final resp = await dio.get('https://api.coingecko.com/api/v3/simple/price', queryParameters: {'ids': 'ethereum,binancecoin', 'vs_currencies': 'usd'});
+        final data = resp.data;
+        if (data is Map<String, dynamic>) {
+          final e = data['ethereum'];
+          final b = data['binancecoin'];
+          if (e is num) ethPrice = e.toDouble();
+          else if (e is Map && e['usd'] is num) ethPrice = (e['usd'] as num).toDouble();
+          if (b is num) bnbPrice = b.toDouble();
+          else if (b is Map && b['usd'] is num) bnbPrice = (b['usd'] as num).toDouble();
+        }
+      } catch (_) {}
+    }
+    if (ethPrice == null) ethPrice = 3500;
+    if (bnbPrice == null) bnbPrice = 600;
+    if (mounted) {
+      setState(() {
+        _ethPrice = ethPrice;
+        _bnbPrice = bnbPrice;
+      });
+    }
+  }
+
+  String _tokenValueUsd(String chain, String symbol, BigInt balanceWei, int decimals) {
+    final isBnb = chain == AlchemyService.bnbMainnet;
+    final price = isBnb ? _bnbPrice : _ethPrice;
+    if (price == null) return '\$0';
+    if (symbol == 'USDT') {
+      final amount = balanceWei.toDouble() / BigInt.from(10).pow(decimals).toDouble();
+      return '\$${amount.toStringAsFixed(2)}';
+    }
+    if (symbol == 'BNB' || symbol == 'ETH') {
+      final amount = balanceWei.toDouble() / 1e18;
+      return '\$${(amount * price).toStringAsFixed(2)}';
+    }
+    return '\$0';
   }
 
   Future<void> _loadTokensForCurrentNetwork() async {
     final net = _networks[_selectedNetworkIndex];
     final chain = net.alchemyChain;
+    final chainKey = net.knownTokensChain;
     final addr = widget.walletAddress;
 
     if (chain == null || chain.isEmpty || !AlchemyService.isAvailable) {
@@ -102,13 +200,19 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
     }
 
     if (addr.isEmpty || !addr.startsWith('0x')) {
+      final nativeSym = _nativeSymbolForChain(chain);
+      final iconColor = _iconColorForChain(chain);
       setState(() {
         _tokens = [
           TransferTokenOption(
-            symbol: _nativeSymbolForChain(chain),
-            name: _nativeSymbolForChain(chain),
+            symbol: nativeSym,
+            name: nativeSym,
             balance: '0',
             usdValue: '\$0',
+            balanceWeiStr: '0',
+            decimals: 18,
+            contractAddress: null,
+            iconColor: iconColor,
           ),
         ];
         _filteredTokens = List.from(_tokens);
@@ -125,27 +229,48 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
     });
 
     try {
-      final balanceResult = await _alchemy.getTokenBalances(addr, chain: chain);
+      await _fetchPrices();
+      if (!mounted) return;
+      final tracked = KnownTokens.getTrackedContractAddresses(chainKey);
+      final balanceResult = await _alchemy.getTokenBalances(addr, chain: chain, contractAddresses: tracked.isEmpty ? null : tracked);
       final nativeBalance = await _alchemy.getNativeBalance(addr, chain: chain);
       if (!mounted) return;
+
+      // Build native + known tokens only (same as token list page)
       final list = <TransferTokenOption>[];
       final nativeSym = _nativeSymbolForChain(chain);
+      final nativeWei = nativeBalance ?? '0';
+      final nativeWeiBig = BigInt.tryParse(nativeWei) ?? BigInt.zero;
+      final nativeFormatted = KnownTokens.formatBalanceDisplay(nativeWei, 18, maxDecimals: 6);
+      final nativeUsd = _tokenValueUsd(chain, nativeSym, nativeWeiBig, 18);
       list.add(TransferTokenOption(
         symbol: nativeSym,
         name: nativeSym,
-        balance: nativeBalance ?? '0',
-        usdValue: '\$0',
+        balance: nativeFormatted,
+        usdValue: nativeUsd,
+        balanceWeiStr: nativeWei,
+        decimals: 18,
+        contractAddress: null,
+        iconColor: _iconColorForChain(chain),
       ));
       for (final t in balanceResult.tokenBalances) {
-        if (t.balanceWei > BigInt.zero) {
-          list.add(TransferTokenOption(
-            symbol: '${t.contractAddress.substring(0, 6)}...',
-            name: '${t.contractAddress.substring(0, 6)}...',
-            balance: t.balanceWei.toString(),
-            usdValue: '\$0',
-          ));
-        }
+        final meta = KnownTokens.getMeta(chainKey, t.contractAddress);
+        if (meta == null) continue;
+        final weiStr = t.balanceWei.toString();
+        final formatted = KnownTokens.formatBalanceDisplay(weiStr, meta.decimals, maxDecimals: 6);
+        final usd = _tokenValueUsd(chain, meta.symbol, t.balanceWei, meta.decimals);
+        list.add(TransferTokenOption(
+          symbol: meta.symbol,
+          name: meta.symbol,
+          balance: formatted,
+          usdValue: usd,
+          balanceWeiStr: weiStr,
+          decimals: meta.decimals,
+          contractAddress: meta.contractAddress,
+          iconColor: Colors.grey,
+        ));
       }
+
       setState(() {
         _tokens = list;
         _filteredTokens = List.from(list);
@@ -337,7 +462,16 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
                   final t = _filteredTokens[i];
                   return InkWell(
                     onTap: () {
-                      widget.onSelect(network.id, network.name, t.symbol);
+                      widget.onSelect(
+                        network.id,
+                        network.name,
+                        t.symbol,
+                        t.balanceWeiStr,
+                        t.decimals,
+                        t.contractAddress,
+                        t.balance,
+                        t.usdValue,
+                      );
                       Navigator.pop(context);
                     },
                     child: Padding(
@@ -345,14 +479,11 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
                       child: Row(
                         children: [
                           t.logo ??
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.shade200,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.monetization_on_outlined, color: Colors.amber),
+                              TokenAvatar(
+                                symbol: t.symbol,
+                                iconUrl: KnownTokens.getLogoUrl(_networks[_selectedNetworkIndex].knownTokensChain, t.contractAddress),
+                                iconColor: t.iconColor,
+                                size: 40,
                               ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -376,6 +507,7 @@ class _TransferTokenSheetState extends State<TransferTokenSheet> {
                                   color: Colors.black87,
                                 ),
                               ),
+                              const SizedBox(height: 2),
                               Text(
                                 t.usdValue,
                                 style: TextStyle(

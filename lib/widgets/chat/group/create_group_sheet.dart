@@ -139,11 +139,27 @@ class _SelectMemberDialogState extends ConsumerState<SelectMemberDialog> {
         // 发送消息
         ws.send(tempMessage);
         print(tempMessage);
-        // 发送邀请提示
-        for (String name in names) {
-          print('名字: $name');
-          tempMessage.content = " 邀请 $name 加入了群组";
-          ws.send(tempMessage);
+        // 邀请入群提示：绿色为邀请人昵称（与群通知组件约定一致）
+        final inviterNick = (nickname ?? '').trim().isEmpty ? '群成员' : nickname!.trim();
+        final tsBase = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+        for (var i = 0; i < names.length; i++) {
+          final name = names[i].trim();
+          if (name.isEmpty) continue;
+          final inviteMsg = pb.Event()
+            ..clientMsgId = const Uuid().v4()
+            ..fromUser = Int64(currentUid)
+            ..toUser = Int64(response['group_id'])
+            ..conversationId = response['conversation_id']
+            ..groupId = Int64(response['group_id'])
+            ..delivery = WSDelivery.group
+            ..type = WSEventType.addGroupMembers
+            ..content = "邀请 $name 加入了群组"
+            ..timestamp = Int64(tsBase + i)
+            ..senderNickname = inviterNick
+            ..senderAvatar = avatar ?? ''
+            ..status = WSMessageStatus.sent;
+          await ref.read(messageRepositoryProvider).saveMessage(inviteMsg);
+          ws.send(inviteMsg);
         }
 
         // ✅ 1. 先关闭底部弹窗

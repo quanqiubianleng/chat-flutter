@@ -138,6 +138,8 @@ class _ImportPrivateKeyPageState extends State<ImportPrivateKeyPage> {
       final walletAddress = res['wallet_address']?.toString() ?? '';
 
       await UserCache.saveToken(res['token']);
+      final rt = (res['refreshToken'] ?? res['refresh_token'])?.toString();
+      if (rt != null && rt.isNotEmpty) await UserCache.saveRefreshToken(rt);
       await UserCache.saveUserId(userId);
       await UserCache.saveDid(didId);
 
@@ -153,7 +155,7 @@ class _ImportPrivateKeyPageState extends State<ImportPrivateKeyPage> {
       if (!mounted) return;
       Navigator.of(context).pop();
       widget.onImportSuccess?.call();
-      ws.switchAccount();
+      await ws.switchAccount();
       Fluttertoast.showToast(msg: '已导入 ${res['username'] ?? "新账号"}');
     } catch (e) {
       if (mounted) {

@@ -6,6 +6,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
   emoji_picker_flutter
   file_selector_windows
+  flutter_inappwebview_windows
+  gal
   record_windows
   share_plus
   sqlite3_flutter_libs

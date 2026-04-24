@@ -12,6 +12,7 @@ import 'package:education/core/global.dart';
 import 'package:education/providers/chat_providers.dart'; // 你的 Riverpod providers 文件
 import 'package:education/providers/user_provider.dart';
 import 'package:education/core/utils/conversation.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/sqlite/user_repository.dart';
 import '../../core/utils/logger.dart';
@@ -23,22 +24,24 @@ import 'package:intl/date_symbol_data_local.dart';
 
 
 
-class DeBoxChatPage extends ConsumerStatefulWidget {
+class BBTChatPage extends ConsumerStatefulWidget {
   final String chatId;        // conversationId（可以是 int 或 String）
+  final int? peerUserId;      // 目标用户ID（优先使用，避免从 chatId 反解析失败）
   /// 从分享弹窗进入时携带的待分享动态，进入后自动发送
   final PostInfo? pendingShare;
 
-  const DeBoxChatPage({
+  const BBTChatPage({
     Key? key,
     required this.chatId,
+    this.peerUserId,
     this.pendingShare,
   }) : super(key: key);
 
   @override
-  ConsumerState<DeBoxChatPage> createState() => _DeBoxChatPageState();
+  ConsumerState<BBTChatPage> createState() => _BBTChatPageState();
 }
 
-class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
+class _BBTChatPageState extends ConsumerState<BBTChatPage> {
   final ScrollController _scrollController = ScrollController();
   final AudioPlayer _audioPlayer = AudioPlayer();
   int _toUserId = 0; // 定义为成员变量
@@ -73,8 +76,19 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
       final uidAsync = await ref.read(userProvider.future);
       final currentUserId = uidAsync!;
 
-      // 计算 toUser
-      final revUserId = getUserIDsByConversationId(widget.chatId, currentUserId);
+      // 计算 toUser：优先走显式传参，兜底再从会话ID反解析
+      final revUserId =
+          (widget.peerUserId != null && widget.peerUserId! > 0)
+              ? widget.peerUserId!
+              : getUserIDsByConversationId(widget.chatId, currentUserId);
+
+      if (revUserId <= 0) {
+        if (mounted) {
+          Fluttertoast.showToast(msg: '参数无效，请返回重试');
+          Navigator.of(context).maybePop();
+        }
+        return;
+      }
 
       // 更新会话昵称
       final userInfo = await api.getUserOtherInfo({"userId": revUserId});
@@ -139,6 +153,21 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
   /// 发送消息（乐观更新）
   Future<void> _sendMessage(String text, String type, String mediaUrl, {Map<String, dynamic>? extra,}) async {
     if (text.trim().isEmpty && type != WSEventType.dynamicShare) return;
+
+    // 0. 单聊发信前校验：对方「谁可以私信我」+ 是否屏蔽
+    if (_toUserId > 0) {
+      try {
+        final check = await api.canSendPmTo(_toUserId);
+        if (check['can'] != true) {
+          final reason = check['reason']?.toString() ?? '无法向对方发送私信';
+          Fluttertoast.showToast(msg: reason);
+          return;
+        }
+      } catch (_) {
+        Fluttertoast.showToast(msg: '无法发送，请稍后重试');
+        return;
+      }
+    }
 
     // 1. 生成临时消息（乐观显示）
     final tempClientMsgId = const Uuid().v4();
@@ -340,7 +369,7 @@ class _DeBoxChatPageState extends ConsumerState<DeBoxChatPage> {
                       final item = displayItems[index];
 
                       if (item is DateSeparator) {
-                        // return _buildDateHeader(item.text);   // 这里传入 item.text
+                        return _buildDateHeader(item.text);
                       }
                       else if (item is MessageBubbleItem) {
                         return MessageBubble(

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fixnum/fixnum.dart';
-import 'package:education/pages/chat/single_chat.dart'; // DeBoxChatPage 所在文件
+import 'package:education/pages/chat/single_chat.dart'; // BBTChatPage 所在文件
 import 'package:education/pages/search/search_type.dart';
-import 'package:education/providers/chat_providers.dart'; // 你的 Riverpod providers 文件路径
+import 'package:education/providers/chat_providers.dart';
 import 'package:education/modules/chat/models/conversation_info.dart';
 import 'package:education/core/utils/timer.dart';
 
@@ -212,7 +212,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           isActive: _selectedIndex == 2,
                           onTap: () => setState(() => _selectedIndex = 2),
                         ),
-                        _buildFilterChip(
+                        /*_buildFilterChip(
                           'Club',
                           isActive: _selectedIndex == 3,
                           onTap: () => setState(() => _selectedIndex = 3),
@@ -221,7 +221,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           'DAO',
                           isActive: _selectedIndex == 4,
                           onTap: () => setState(() => _selectedIndex = 4),
-                        ),
+                        ),*/
                       ],
                     ),
                   ),
@@ -349,7 +349,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                         isActive: _selectedIndex == 2,
                         onTap: () => setState(() => _selectedIndex = 2),
                       ),
-                      _buildFilterChip(
+                      /*_buildFilterChip(
                         'Club',
                         isActive: _selectedIndex == 3,
                         onTap: () => setState(() => _selectedIndex = 3),
@@ -358,7 +358,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                         'DAO',
                         isActive: _selectedIndex == 4,
                         onTap: () => setState(() => _selectedIndex = 4),
-                      ),
+                      ),*/
                     ],
                   ),
                 ),
@@ -373,12 +373,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                         return const Center(child: Text('暂无会话'));
                       }
 
-                      // 在这里打印数据
-                      print("会话数据: ${conversations.length} 条记录");
-                      for (var conv in conversations) {
-                        print("会话: type=${conv.type}, title=${conv.title}, server_conversation_id=${conv.serverConversationId}, "
-                            "last_timestamp=${conv.lastTimestamp}, user_id=${conv.userId}, avatar=${conv.avatar}");
-                      }
+                      // 统一补全空昵称/空头像（单聊拉用户信息、群聊拉群信息，去重+限流）
+                      ref.read(conversationFillServiceProvider).fillIfNeeded(conversations, currentUid!);
 
                       // 根据当前筛选索引过滤（这里简单示例，实际可根据 Conversation.type 扩展）
                       List<Conversation> filteredList = conversations;
@@ -428,7 +424,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => DeBoxChatPage(
+                                    builder: (_) => BBTChatPage(
                                       chatId: convId,
                                     ),
                                   ),

@@ -42,7 +42,7 @@ class InviteLinkBubble extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                "速来领取：https://m.debox.pro/airdrop?...",
+                "速来领取：https://m.bbt.pro/airdrop?...",
                 style: TextStyle(color: Color(0xFF888888), fontSize: 12),
               ),
             ],

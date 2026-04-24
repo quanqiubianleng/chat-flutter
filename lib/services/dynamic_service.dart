@@ -27,23 +27,25 @@ class DynamicApi {
     return ApiClient.getDataOrThrow(resp);
   }
 
-  /// 获取信息流（关注/广场）
+  /// 获取信息流：`public` 全站公开动态倒序；`following` 关注流（网关转 GetFeedByUserIds）
   Future<Map<String, dynamic>> getFeed({
     String visibility = 'public',
     int cursor = 0,
     int limit = 20,
   }) async {
-    final resp = await _client.post('/v1/dynamic/getFeed', data: {
-      'visibility': visibility,
-      'cursor': cursor,
-      'limit': limit,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/getFeed',
+      data: {'visibility': visibility, 'cursor': cursor, 'limit': limit},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
   /// 获取动态详情
   Future<Map<String, dynamic>> getPostDetail({required int postId}) async {
-    final resp = await _client.post('/v1/dynamic/getPostDetail', data: {'post_id': postId});
+    final resp = await _client.post(
+      '/v1/dynamic/getPostDetail',
+      data: {'post_id': postId},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -53,38 +55,49 @@ class DynamicApi {
     int cursor = 0,
     int limit = 20,
   }) async {
-    final resp = await _client.post('/v1/dynamic/getUserPosts', data: {
-      'user_id': userId,
-      'cursor': cursor,
-      'limit': limit,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/getUserPosts',
+      data: {'user_id': userId, 'cursor': cursor, 'limit': limit},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
   /// 点赞
-  Future<Map<String, dynamic>> likePost({required int postId, double rewardAmount = 0}) async {
-    final resp = await _client.post('/v1/dynamic/likePost', data: {
-      'post_id': postId,
-      'reward_amount': rewardAmount,
-    });
+  Future<Map<String, dynamic>> likePost({
+    required int postId,
+    double rewardAmount = 0,
+  }) async {
+    final resp = await _client.post(
+      '/v1/dynamic/likePost',
+      data: {'post_id': postId, 'reward_amount': rewardAmount},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
   /// 取消点赞
   Future<Map<String, dynamic>> unlikePost({required int postId}) async {
-    final resp = await _client.post('/v1/dynamic/unlikePost', data: {'post_id': postId});
+    final resp = await _client.post(
+      '/v1/dynamic/unlikePost',
+      data: {'post_id': postId},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
   /// 收藏
   Future<Map<String, dynamic>> starPost({required int postId}) async {
-    final resp = await _client.post('/v1/dynamic/starPost', data: {'post_id': postId});
+    final resp = await _client.post(
+      '/v1/dynamic/starPost',
+      data: {'post_id': postId},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
   /// 取消收藏
   Future<Map<String, dynamic>> unstarPost({required int postId}) async {
-    final resp = await _client.post('/v1/dynamic/unstarPost', data: {'post_id': postId});
+    final resp = await _client.post(
+      '/v1/dynamic/unstarPost',
+      data: {'post_id': postId},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -93,10 +106,10 @@ class DynamicApi {
     int cursor = 0,
     int limit = 20,
   }) async {
-    final resp = await _client.post('/v1/dynamic/getStarredPosts', data: {
-      'cursor': cursor,
-      'limit': limit,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/getStarredPosts',
+      data: {'cursor': cursor, 'limit': limit},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -106,11 +119,14 @@ class DynamicApi {
     int parentCommentId = 0,
     required String content,
   }) async {
-    final resp = await _client.post('/v1/dynamic/commentPost', data: {
-      'post_id': postId,
-      'parent_comment_id': parentCommentId,
-      'content': content,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/commentPost',
+      data: {
+        'post_id': postId,
+        'parent_comment_id': parentCommentId,
+        'content': content,
+      },
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -120,11 +136,10 @@ class DynamicApi {
     int cursor = 0,
     int limit = 20,
   }) async {
-    final resp = await _client.post('/v1/dynamic/getComments', data: {
-      'post_id': postId,
-      'cursor': cursor,
-      'limit': limit,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/getComments',
+      data: {'post_id': postId, 'cursor': cursor, 'limit': limit},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -134,11 +149,10 @@ class DynamicApi {
     int cursor = 0,
     int limit = 20,
   }) async {
-    final resp = await _client.post('/v1/dynamic/getUserComments', data: {
-      'user_id': userId,
-      'cursor': cursor,
-      'limit': limit,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/getUserComments',
+      data: {'user_id': userId, 'cursor': cursor, 'limit': limit},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -148,11 +162,10 @@ class DynamicApi {
     int cursor = 0,
     int limit = 20,
   }) async {
-    final resp = await _client.post('/v1/dynamic/getUserLikedPosts', data: {
-      'user_id': userId,
-      'cursor': cursor,
-      'limit': limit,
-    });
+    final resp = await _client.post(
+      '/v1/dynamic/getUserLikedPosts',
+      data: {'user_id': userId, 'cursor': cursor, 'limit': limit},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
@@ -191,19 +204,42 @@ class DynamicApi {
 
   /// 删除动态
   Future<Map<String, dynamic>> deletePost({required int postId}) async {
-    final resp = await _client.post('/v1/dynamic/deletePost', data: {'post_id': postId});
+    final resp = await _client.post(
+      '/v1/dynamic/deletePost',
+      data: {'post_id': postId},
+    );
     return ApiClient.getDataOrThrow(resp);
   }
 
   /// 获取话题列表（若后端未实现可返回空）
   Future<Map<String, dynamic>> getTopicList({String? keyword}) async {
-    try {
-      final data = <String, dynamic>{};
-      if (keyword != null && keyword.isNotEmpty) data['keyword'] = keyword;
-      final resp = await _client.post('/v1/dynamic/getTopicList', data: data);
-      return ApiClient.getDataOrThrow(resp);
-    } catch (_) {
-      return {'data': [], 'code': 200, 'msg': 'ok'};
-    }
+    final data = <String, dynamic>{};
+    if (keyword != null && keyword.isNotEmpty) data['keyword'] = keyword;
+    final resp = await _client.post('/v1/dynamic/getTopicList', data: data);
+    return ApiClient.getDataOrThrow(resp);
+  }
+
+  /// 按代币+话题查询动态（K线页底部）
+  Future<Map<String, dynamic>> getTokenTopicFeed({
+    required String symbol,
+    required String contractAddress,
+    String chain = '',
+    String topicKeyword = '',
+    int cursor = 0,
+    int limit = 20,
+  }) async {
+    final data = <String, dynamic>{
+      'symbol': symbol,
+      'contract_address': contractAddress,
+      'cursor': cursor,
+      'limit': limit,
+    };
+    if (chain.isNotEmpty) data['chain'] = chain;
+    if (topicKeyword.isNotEmpty) data['topic_keyword'] = topicKeyword;
+    final resp = await _client.post(
+      '/v1/dynamic/getTokenTopicFeed',
+      data: data,
+    );
+    return ApiClient.getDataOrThrow(resp);
   }
 }

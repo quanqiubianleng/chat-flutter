@@ -160,6 +160,8 @@ class _AddGroupMemberState extends ConsumerState<AddGroupMember> {
         final tempClientMsgId = const Uuid().v4();
         final tempTimestamp = (DateTime.now().millisecondsSinceEpoch ~/ 1000);
         final convID = generateTempConversationId(userIdA: 0, userIdB: widget.groupId, isGroup: true);
+        final myNick = ref.read(myNicknameProvider).valueOrNull?.trim();
+        final myAvatar = ref.read(myAvatarProvider).valueOrNull ?? '';
         final tempMessage = pb.Event()
           ..clientMsgId = tempClientMsgId
           ..fromUser = Int64(curUserId!)
@@ -168,8 +170,10 @@ class _AddGroupMemberState extends ConsumerState<AddGroupMember> {
           ..groupId =  Int64(widget.groupId)
           ..delivery = WSDelivery.group
           ..type = WSEventType.addGroupMembers
-          ..content = "添加了新成员 ${names.join(',')}"
+          ..content = "添加了新成员 ${names.join('、')}"
           ..timestamp = Int64(tempTimestamp)
+          ..senderNickname = (myNick != null && myNick.isNotEmpty) ? myNick : '群成员'
+          ..senderAvatar = myAvatar
           ..status = WSMessageStatus.sent;
 
         // 保存到本地数据库 → 触发 Riverpod 实时更新 UI

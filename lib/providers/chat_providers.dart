@@ -6,6 +6,9 @@ import 'package:education/pb/protos/chat.pb.dart' as pb;
 import 'package:education/core/sqlite/message_repository.dart';
 import 'package:education/core/global.dart';
 import 'package:education/core/notifications/notifications.dart';
+import 'package:education/services/conversation_fill_service.dart';
+import 'package:education/services/group_service.dart';
+import 'package:education/services/user_service.dart';
 import 'package:intl/intl.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:education/core/sqlite/database_helper.dart';
@@ -18,6 +21,15 @@ import 'package:intl/date_symbol_data_local.dart';
 // ────────────────────────────────────────────────
 final messageRepositoryProvider = Provider<MessageRepository>((ref) {
   return MessageRepository(Global.db);
+});
+
+/// 会话列表空昵称/空头像补全服务（单聊拉用户信息、群聊拉群信息，去重+最多2并发）
+final conversationFillServiceProvider = Provider<ConversationFillService>((ref) {
+  return ConversationFillService(
+    messageRepository: ref.read(messageRepositoryProvider),
+    userApi: UserApi(),
+    groupApi: GroupApi(),
+  );
 });
 
 // ────────────────────────────────────────────────
@@ -74,10 +86,19 @@ final displayItemsProvider = Provider.family<List<ChatDisplayItem>, String>(
 List<ChatDisplayItem> buildDisplayItems(List<pb.Event> messages) {
   if (messages.isEmpty) return [];
 
-  // 如果数据库返回的是【最新 → 旧】（DESC），在这里反转成【旧 → 新】
-  // final sortedMessages = messages.reversed.toList();
-  // 下面用 sortedMessages 替换 messages
-  // 这里假设你已经改成 ASC 升序（旧 → 新），所以直接用 messages
+  // 统一按“真实时间（兼容秒/毫秒）”降序，避免普通消息与系统消息被分段显示。
+  // 当前聊天页使用 reverse: true，因此这里保持“新 -> 旧”可确保最新消息在底部。
+  final sortedMessages = [...messages]..sort((a, b) {
+    final aMs = _parseTimestamp(a.timestamp).millisecondsSinceEpoch;
+    final bMs = _parseTimestamp(b.timestamp).millisecondsSinceEpoch;
+    if (aMs != bMs) return bMs.compareTo(aMs);
+
+    // 同一时间戳时用 seq 兜底，保证顺序稳定。
+    final aSeq = a.seq.toInt();
+    final bSeq = b.seq.toInt();
+    if (aSeq != bSeq) return bSeq.compareTo(aSeq);
+    return b.msgId.compareTo(a.msgId);
+  });
 
   final List<ChatDisplayItem> items = [];
 
@@ -89,7 +110,7 @@ List<ChatDisplayItem> buildDisplayItems(List<pb.Event> messages) {
 
   DateTime? lastTime;
 
-  for (final msg in messages) {
+  for (final msg in sortedMessages) {
     final msgTime = _parseTimestamp(msg.timestamp).toLocal(); // 强制转本地时区（韩国时间）
     final msgDateKey = dateFormat.format(msgTime);            // '2026-01-22'
 

@@ -17,7 +17,7 @@ import 'package:education/services/user_service.dart';
 import 'package:education/widgets/chat/group/group_avatar.dart';
 import 'package:education/pb/protos/chat.pb.dart' as pb;
 
-/// DeBox 风格分享弹窗：搜索、建议会话、复制链接、保存图片、更多
+/// BBT 风格分享弹窗：搜索、建议会话、复制链接、保存图片、更多
 /// 用于将动态分享到聊天
 void showDynamicShareSheet({
   required BuildContext context,

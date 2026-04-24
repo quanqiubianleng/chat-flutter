@@ -160,7 +160,7 @@ class DynamicShareBubble extends ConsumerWidget {
     );
   }
 
-  /// 解析并渲染含 @ 和 # 的文本（DeBox 风格高亮）
+  /// 解析并渲染含 @ 和 # 的文本（BBT 风格高亮）
   Widget _buildRichContent(String text) {
     if (text.isEmpty) return const SizedBox.shrink();
     final spans = <TextSpan>[];

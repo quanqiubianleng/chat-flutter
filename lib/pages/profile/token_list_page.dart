@@ -1,11 +1,18 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
+import 'package:education/config/app_config.dart';
 import 'package:education/config/known_tokens.dart';
 import 'package:education/services/alchemy_service.dart';
+import 'package:education/services/coingecko_service.dart';
 import 'package:education/pages/profile/token_transfer_page.dart';
 import 'package:education/pages/profile/receive_token_page.dart';
 import 'package:education/pages/profile/quick_buy_swap_page.dart';
+import 'package:education/pages/profile/token_detail_page.dart';
 import 'package:education/widgets/common/empty_state_view.dart';
+import 'package:education/widgets/common/token_avatar.dart';
 
 /// 网络选项（与 Alchemy 链标识对应）
 class _NetworkOption {
@@ -60,6 +67,7 @@ class _TokenListPageState extends State<TokenListPage> {
   double? _totalUsd;
   double? _ethPrice;
   double? _bnbPrice;
+  double? _bbtPrice;
   late bool _tabTokens;
   List<AlchemyNftItem> _nfts = [];
   bool _nftLoading = false;
@@ -99,7 +107,7 @@ class _TokenListPageState extends State<TokenListPage> {
       if (mounted) {
         setState(() {
           _nftLoading = false;
-          _nftError = e.toString();
+          _nftError = e.toString(); 
           _nfts = [];
         });
       }
@@ -150,34 +158,58 @@ class _TokenListPageState extends State<TokenListPage> {
       for (final meta in KnownTokens.byChain[_currentChain] ?? []) {
         merged.add(byAddr[meta.addressLower] ?? TokenBalanceItem(contractAddress: meta.contractAddress, tokenBalance: '0x0'));
       }
-      ({double total, double ethPrice, double bnbPrice})? priceResult;
+      ({double total, double ethPrice, double bnbPrice, double? bbtPrice})? priceResult;
       try {
         priceResult = await _fetchPricesAndTotal(native, merged, _currentChain);
       } catch (_) {}
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = balanceResult.error;
+        _error = balanceResult.error != null ? _friendlyAssetError(balanceResult.error!) : null;
         _tokens = merged;
         _nativeBalance = native;
         _totalUsd = priceResult?.total;
         _ethPrice = priceResult?.ethPrice;
         _bnbPrice = priceResult?.bnbPrice;
+        _bbtPrice = priceResult?.bbtPrice;
       });
     } catch (e) {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = e.toString();
+          _error = _friendlyAssetError(e.toString());
         });
       }
     }
   }
 
-  /// 拉取价格并计算总 USD，同时返回价格供每行代币估值用
-  Future<({double total, double ethPrice, double bnbPrice})?> _fetchPricesAndTotal(String? nativeWei, List<TokenBalanceItem> tokens, String chain) async {
+  /// 将 SSL/证书类错误转为用户可读提示
+  static String _friendlyAssetError(String raw) {
+    if (raw.contains('CERTIFICATE_VERIFY_FAILED') ||
+        raw.contains('Hostname mismatch') ||
+        raw.contains('HandshakeException')) {
+      return '网络证书校验失败，请检查当前网络（如使用 VPN、关闭代理）后重试';
+    }
+    return raw;
+  }
+
+  /// 拉取价格并计算总 USD，同时返回价格供每行代币估值用（含 BBT）
+  Future<({double total, double ethPrice, double bnbPrice, double? bbtPrice})?> _fetchPricesAndTotal(
+    String? nativeWei,
+    List<TokenBalanceItem> tokens,
+    String chain,
+  ) async {
     if (chain == 'solana') return null;
     final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 10)));
+    if (AppConfig.isDebug) {
+      dio.httpClientAdapter = IOHttpClientAdapter(
+        createHttpClient: () {
+          final client = HttpClient();
+          client.badCertificateCallback = (_, __, ___) => true;
+          return client;
+        },
+      );
+    }
     double? ethPrice;
     double? bnbPrice;
     try {
@@ -196,16 +228,24 @@ class _TokenListPageState extends State<TokenListPage> {
     } catch (_) {}
     if (ethPrice == null || bnbPrice == null) {
       try {
-        final resp = await dio.get<Map<String, dynamic>>(
+        final resp = await dio.get(
           'https://api.coingecko.com/api/v3/simple/price',
           queryParameters: {'ids': 'ethereum,binancecoin,tether', 'vs_currencies': 'usd'},
         );
         final data = resp.data;
-        if (data != null) {
-          final eth = (data['ethereum'] as Map<String, dynamic>?)?['usd'];
-          final bnb = (data['binancecoin'] as Map<String, dynamic>?)?['usd'];
-          if (eth != null) ethPrice = (eth as num).toDouble();
-          if (bnb != null) bnbPrice = (bnb as num).toDouble();
+        if (data is Map<String, dynamic>) {
+          final ethVal = data['ethereum'];
+          final bnbVal = data['binancecoin'];
+          if (ethVal is num) ethPrice = ethVal.toDouble();
+          else if (ethVal is Map) {
+            final u = ethVal['usd'];
+            if (u is num) ethPrice = u.toDouble();
+          }
+          if (bnbVal is num) bnbPrice = bnbVal.toDouble();
+          else if (bnbVal is Map) {
+            final u = bnbVal['usd'];
+            if (u is num) bnbPrice = u.toDouble();
+          }
         }
       } catch (_) {}
     }
@@ -221,13 +261,33 @@ class _TokenListPageState extends State<TokenListPage> {
       final wei = BigInt.tryParse(nativeWei) ?? BigInt.zero;
       total += wei.toDouble() / 1e18 * nativePrice;
     }
+
+    // 若钱包中持有 BBT，则尝试通过 1inch 报价获取 BBT 的 USDT 单价
+    bool hasBbt = false;
+    for (final t in tokens) {
+      final meta = KnownTokens.getMeta(chain, t.contractAddress);
+      if (meta?.symbol == 'BBT' && t.balanceWei > BigInt.zero) {
+        hasBbt = true;
+        break;
+      }
+    }
+    double? bbtPrice;
+    if (hasBbt) {
+      bbtPrice = await CoinGeckoService.getTokenUsdPrice(chain, KnownTokens.bbtContract);
+    }
+
     for (final t in tokens) {
       final meta = KnownTokens.getMeta(chain, t.contractAddress);
       if (meta == null) continue;
-      final amount = t.balanceWei.toDouble() / (BigInt.from(10).pow(meta.decimals).toDouble());
-      if (meta.symbol == 'USDT') total += amount * usdtPrice;
+      final amount =
+          t.balanceWei.toDouble() / BigInt.from(10).pow(meta.decimals).toDouble();
+      if (meta.symbol == 'USDT') {
+        total += amount * usdtPrice;
+      } else if (meta.symbol == 'BBT' && bbtPrice != null) {
+        total += amount * bbtPrice;
+      }
     }
-    return (total: total, ethPrice: ethPrice!, bnbPrice: bnbPrice!);
+    return (total: total, ethPrice: ethPrice!, bnbPrice: bnbPrice!, bbtPrice: bbtPrice);
   }
 
   String get _nativeSymbol {
@@ -667,15 +727,21 @@ class _TokenListPageState extends State<TokenListPage> {
 
   /// 单一代币数量折合 USD 字符串（用于列表行）
   String _tokenValueUsd(String symbol, BigInt balanceWei, int decimals) {
-    final price = _nativePriceUsd;
-    if (price == null) return '\$0';
     if (symbol == 'USDT') {
-      final amount = balanceWei.toDouble() / BigInt.from(10).pow(decimals).toDouble();
+      final amount =
+          balanceWei.toDouble() / BigInt.from(10).pow(decimals).toDouble();
       return '\$${amount.toStringAsFixed(2)}';
     }
     if (symbol == 'BNB' || symbol == 'ETH') {
+      final price = _nativePriceUsd;
+      if (price == null) return '\$0';
       final amount = balanceWei.toDouble() / 1e18;
       return '\$${(amount * price).toStringAsFixed(2)}';
+    }
+    if (symbol == 'BBT' && _bbtPrice != null) {
+      final amount =
+          balanceWei.toDouble() / BigInt.from(10).pow(decimals).toDouble();
+      return '\$${(amount * _bbtPrice!).toStringAsFixed(2)}';
     }
     return '\$0';
   }
@@ -690,6 +756,16 @@ class _TokenListPageState extends State<TokenListPage> {
         amount: KnownTokens.formatBalanceDisplay(_nativeBalance!, 18, maxDecimals: 6),
         valueUsd: valueUsd,
         iconColor: _currentNetwork.iconColor,
+        logoUrl: null,
+        onTap: () => _openTokenDetail(
+          symbol: _nativeSymbol,
+          balanceWeiStr: _nativeBalance!,
+          decimals: 18,
+          contractAddress: null,
+          iconColor: _currentNetwork.iconColor,
+          logoUrl: null,
+          priceUsd: _nativePriceUsd,
+        ),
       ));
     }
     for (final t in _tokens) {
@@ -701,11 +777,24 @@ class _TokenListPageState extends State<TokenListPage> {
       final valueUsd = meta != null
           ? _tokenValueUsd(meta.symbol, t.balanceWei, meta.decimals)
           : '\$0';
+      final metaForDetail = KnownTokens.getMeta(_currentChain, t.contractAddress);
       list.add(_tokenRow(
         symbol: symbol,
         amount: amount,
         valueUsd: valueUsd,
         iconColor: Colors.grey,
+        logoUrl: KnownTokens.getLogoUrl(_currentChain, t.contractAddress),
+        onTap: metaForDetail == null
+            ? null
+            : () => _openTokenDetail(
+                  symbol: metaForDetail.symbol,
+                  balanceWeiStr: t.balanceWei.toString(),
+                  decimals: metaForDetail.decimals,
+                  contractAddress: t.contractAddress,
+                  iconColor: Colors.grey,
+                  logoUrl: KnownTokens.getLogoUrl(_currentChain, t.contractAddress),
+                  priceUsd: null,
+                ),
       ));
     }
     if (list.isEmpty) {
@@ -724,34 +813,48 @@ class _TokenListPageState extends State<TokenListPage> {
     );
   }
 
+  void _openTokenDetail({
+    required String symbol,
+    required String balanceWeiStr,
+    required int decimals,
+    required Color iconColor,
+    String? contractAddress,
+    String? logoUrl,
+    double? priceUsd,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TokenDetailPage(
+          walletAddress: widget.walletAddress,
+          chain: _currentChain,
+          networkName: _currentNetwork.name,
+          symbol: symbol,
+          balanceWeiStr: balanceWeiStr,
+          decimals: decimals,
+          contractAddress: contractAddress,
+          iconColor: iconColor,
+          logoUrl: logoUrl,
+          priceUsd: priceUsd,
+        ),
+      ),
+    );
+  }
+
   Widget _tokenRow({
     required String symbol,
     required String amount,
     required String valueUsd,
     required Color iconColor,
+    String? logoUrl,
+    VoidCallback? onTap,
   }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.25),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                symbol.length > 4 ? symbol.substring(0, 2) : symbol,
-                style: TextStyle(
-                  color: iconColor,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
+          TokenAvatar(symbol: symbol, iconUrl: logoUrl, iconColor: iconColor, size: 40),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -783,6 +886,7 @@ class _TokenListPageState extends State<TokenListPage> {
           ),
         ],
       ),
+    ),
     );
   }
 }

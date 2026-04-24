@@ -1,4 +1,5 @@
 import 'package:education/pages/search/search_user.dart';
+import 'package:education/pages/search/search_group.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -41,8 +42,8 @@ class SearchType extends StatelessWidget {
               children: [
                 _buildGridItem('用户', Icons.person_outline, context),
                 _buildGridItem('群组', Icons.group, context),
-                _buildGridItem('聊天记录', Icons.chat_bubble_outline, context),
-                _buildGridItem('浏览器', Icons.language, context),
+                _buildGridItem('聊天记录', Icons.chat_bubble_outline, context), 
+                // _buildGridItem('浏览器', Icons.language, context),
               ],
             ),
           ),
@@ -83,6 +84,12 @@ class SearchType extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const SearchUser()),
+            );
+          }
+          if (title == "群组"){
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SearchGroupPage()),
             );
           }
         },

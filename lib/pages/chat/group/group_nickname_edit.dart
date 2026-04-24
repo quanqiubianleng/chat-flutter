@@ -1,5 +1,6 @@
 import 'dart:ffi';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:education/config/app_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -280,19 +281,20 @@ class _GroupEditPageState extends ConsumerState<GroupEditPage> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: Image.network(
-          url,
+        child: CachedNetworkImage(
+          imageUrl: url,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Colors.grey[800],
-              child: Icon(
-                index == 0 ? Icons.favorite : Icons.pets,
-                color: Colors.white,
-                size: 40,
-              ),
-            );
-          },
+          width: 80,
+          height: 80,
+          placeholder: (_, __) => Container(color: Colors.grey[800]),
+          errorWidget: (_, __, ___) => Container(
+            color: Colors.grey[800],
+            child: Icon(
+              index == 0 ? Icons.favorite : Icons.pets,
+              color: Colors.white,
+              size: 40,
+            ),
+          ),
         ),
       ),
     );

@@ -1,6 +1,7 @@
 // ======================== 红包气泡 ========================
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:education/pb/protos/chat.pb.dart';
 import 'package:flutter/material.dart';
 
@@ -88,13 +89,13 @@ class _RedPacketBubbleState extends State<RedPacketBubble> {
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(8), // 圆角半径，建议 8~12，根据设计调整
-                child: Image.network(
-                  "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: "https://bbt-bucket-public.oss-cn-hongkong.aliyuncs.com/avatar_s/1.png",
                   width: 50,
                   height: 50,
-                  fit: BoxFit.cover, // 重要：确保图片填满容器并被裁剪
-                  errorBuilder: (_, __, ___) => Container(
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
@@ -103,18 +104,15 @@ class _RedPacketBubbleState extends State<RedPacketBubble> {
                     ),
                     child: const Icon(Icons.card_giftcard, color: Colors.white, size: 30),
                   ),
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(child: CircularProgressIndicator(color: Colors.white)),
-                    );
-                  },
+                  errorWidget: (_, __, ___) => Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.card_giftcard, color: Colors.white, size: 30),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),

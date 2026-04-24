@@ -20,6 +20,7 @@ import '../../../modules/chat/models/group.dart';
 import '../../../modules/dynamic/models/post_info.dart';
 import '../../../providers/group_provider.dart';
 import '../../../services/group_service.dart';
+import 'group_profile_page.dart';
 import 'group_setting.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -48,6 +49,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
   int _groupID = 0; // 群组ID
   String _groupTitle = "";
   late bool _isTalk = true;
+  bool _canOpenUserProfile = true;
 
   @override
   void initState() {
@@ -87,6 +89,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
         _groupID = groupID;
         _groupTitle = info.Name;
         _isTalk = isTalk;
+        _canOpenUserProfile = info.restrictAddFriend != 1;
       });
       if (widget.pendingShare != null) {
         _sendDynamicShare(widget.pendingShare!);
@@ -287,6 +290,22 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
         leading: const BackButton(color: Color.fromARGB(255, 56, 55, 55)),
         actions:  [
           IconButton(
+            icon: const Icon(Icons.info_outline, color: Color.fromARGB(255, 56, 55, 55)),
+            visualDensity: const VisualDensity(horizontal: -2, vertical: -4),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: _groupID <= 0
+                ? null
+                : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GroupProfilePage(groupId: _groupID),
+                      ),
+                    ).then((_) => _initializeGroupData());
+                  },
+          ),
+          IconButton(
             icon: const Icon(Icons.add_box_outlined, color: Color.fromARGB(255, 56, 55, 55)),
             visualDensity: const VisualDensity(horizontal: -2, vertical: -4), // ← 关键：压缩密度
             padding: EdgeInsets.zero,                                        // 去除按钮内边距
@@ -300,7 +319,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
                     groupId: _groupID,
                   ),
                 ),
-              );
+              ).then((_) => _initializeGroupData());
             },
           ),
           IconButton(
@@ -317,7 +336,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
                     groupId: _groupID,
                   ),
                 ),
-              );
+              ).then((_) => _initializeGroupData());
             },
           ),
           IconButton(
@@ -334,7 +353,7 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
                     groupId: _groupID,
                   ),
                 ),
-              );
+              ).then((_) => _initializeGroupData());
             },
           ),
         ],
@@ -372,12 +391,13 @@ class _GroupChatPageState extends ConsumerState<GroupChatPage> {
                       final item = displayItems[index];
 
                       if (item is DateSeparator) {
-                        // return _buildDateHeader(item.text);   // 这里传入 item.text
+                        return _buildDateHeader(item.text);
                       }
                       else if (item is MessageBubbleItem) {
                         return MessageBubble(
                           message: item.message,              // 传入 pb.Event
                           showTime: item.showTime,            // 传入 bool
+                          canOpenUserProfile: _canOpenUserProfile,
                         );
                       }
                       return const SizedBox.shrink();
